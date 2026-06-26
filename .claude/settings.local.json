@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-Content \"C:\\\\Users\\\\vidyu\\\\ReferrAI\\\\backend\\\\app\\\\models\\\\user.py\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\vidyu\\\\ReferrAI\\\\backend\\\\app\\\\models\\\\partner.py\")",
+      "Bash(pip install *)",
+      "Bash(python *)",
+      "Bash(pip show *)",
+      "Bash(alembic revision *)",
+      "Bash(alembic upgrade *)",
+      "Bash(alembic current *)"
+    ]
+  }
+}
