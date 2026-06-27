@@ -1,0 +1,18 @@
+# -----------------------------------------------------------------------------
+# backend/requirements-ml.txt
+#
+# Heavy AI/ML dependencies split from requirements.txt to keep the base Docker
+# image lean during early development phases. Install with:
+#   pip install -r requirements-ml.txt
+# scikit-learn provides Isolation Forest (fraud detection) and clustering.
+# sentence-transformers generates embeddings for partner similarity matching.
+# shap produces per-feature explanations for AI scores shown on the dashboard.
+# When AI features are implemented, add this file to the Dockerfile's RUN pip
+# install step after requirements.txt.
+# -----------------------------------------------------------------------------
+
+# AI/ML dependencies — heavy, install separately after core requirements.
+# In Docker: install during phase-4 feature work, not in the base image.
+scikit-learn==1.4.2
+sentence-transformers==2.7.0
+shap==0.45.1

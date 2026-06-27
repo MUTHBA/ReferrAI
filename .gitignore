@@ -1,1 +1,52 @@
-CLAUDE.md
+# -----------------------------------------------------------------------------
+# .gitignore — monorepo-level ignore rules for ReferrAI
+#
+# Covers Python (backend), Node (frontend), Alembic dev databases, ML model
+# artifacts, and common IDE/OS files. .env is explicitly excluded to prevent
+# accidental credential commits; each developer maintains their own .env from
+# .env.example. ML model .joblib files are excluded because they are large
+# binary artifacts — regenerate them from training scripts, don't commit them.
+# -----------------------------------------------------------------------------
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+*.env.local
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.Python
+pip-log.txt
+
+# ── Alembic ──────────────────────────────────────────────────────────────────
+*.db
+*.sqlite3
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# ── ML models & data ─────────────────────────────────────────────────────────
+ml/models/*.joblib
+ml/data/synthetic/
+ml/data/raw/
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
