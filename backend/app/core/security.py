@@ -27,3 +27,23 @@ def decode_access_token(token: str) -> dict:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except JWTError as exc:
         raise ValueError("Invalid or expired token") from exc
+
+
+def create_password_reset_token(subject: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
+    )
+    claims = {"sub": subject, "purpose": "password_reset", "exp": expire}
+    return jwt.encode(claims, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def decode_password_reset_token(token: str) -> str:
+    try:
+        claims = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError as exc:
+        raise ValueError("Invalid or expired token") from exc
+
+    if claims.get("purpose") != "password_reset":
+        raise ValueError("Token is not a password reset token")
+
+    return claims["sub"]
