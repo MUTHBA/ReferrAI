@@ -1,0 +1,16 @@
+# -----------------------------------------------------------------------------
+# frontend/.dockerignore
+#
+# Keeps the Docker build context lean for the frontend image. node_modules/ is
+# critical to exclude — without this, Docker would copy tens of thousands of
+# files into the build context on every build, causing significant slowdowns
+# (especially on Windows with deep paths). dist/ and .vite/ are build artifacts
+# that should always be regenerated inside the container, not copied from the
+# host. Source code is bind-mounted in development so the COPY . . layer only
+# matters for production builds.
+# -----------------------------------------------------------------------------
+
+node_modules/
+dist/
+.vite/
+*.local

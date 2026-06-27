@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/ai_score.py
+#
+# Append-only store for all AI model outputs (quality, fraud_risk, churn_risk,
+# ranking, partner_potential). The AI module writes a new row on each scoring
+# run; historical rows are preserved for trend analysis and model evaluation.
+# A composite index on (entity_type, entity_id) supports fast per-entity lookup.
+# is_synthetic excludes generated training data from production dashboards.
+# model_version enables accuracy tracking as the AI models are retrained.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal

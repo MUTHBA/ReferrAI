@@ -8,7 +8,18 @@
       "Bash(pip show *)",
       "Bash(alembic revision *)",
       "Bash(alembic upgrade *)",
-      "Bash(alembic current *)"
+      "Bash(alembic current *)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(docker info *)",
+      "Bash(docker context ls *)",
+      "Bash(docker context *)",
+      "Bash(\"/c/Program Files/Docker/Docker/Docker Desktop.exe\")",
+      "Bash(docker build *)",
+      "Bash(curl -sf http://localhost:8000/health)",
+      "Bash(curl -sf http://localhost:80/health)",
+      "Bash(curl -sfI http://localhost:3000)",
+      "Bash(curl -sfI http://localhost:80/)"
     ]
   }
 }

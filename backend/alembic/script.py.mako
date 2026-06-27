@@ -1,3 +1,13 @@
+## -----------------------------------------------------------------------------
+## backend/alembic/script.py.mako
+##
+## Mako template used by `alembic revision --autogenerate` to scaffold new
+## migration files. Alembic substitutes ${message}, ${up_revision}, and other
+## variables at generation time. The file that gets written lands in
+## alembic/versions/ with the timestamp-prefixed filename defined in alembic.ini.
+## To add project-wide boilerplate to every migration (e.g. extra imports or a
+## reviewer checklist), edit this template rather than each migration file.
+## -----------------------------------------------------------------------------
 """${message}
 
 Revision ID: ${up_revision}

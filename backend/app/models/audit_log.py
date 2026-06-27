@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/audit_log.py
+#
+# Immutable admin event log — append-only, never update or delete rows here.
+# Per CLAUDE.md, every admin action (settings change, payout approval, fraud
+# flag review) must write a row to this table. entity_type + entity_id identify
+# the affected resource. old_value / new_value JSONB columns capture diffs for
+# settings changes. user_id is nullable to support system-generated audit events.
+# Developers: call AuditLogRepository.create() from service methods, not routes.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from typing import Optional

@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/setting.py
+#
+# Key-value store for all runtime-configurable business rules (commission %,
+# auto-approval threshold, fraud score cutoff, attribution model, tier limits).
+# Services load settings at runtime so values take effect without redeployment.
+# JSONB value supports any shape (scalar, list, nested object). updated_by FK
+# provides accountability; every change must also write a row to audit_logs.
+# Developers: use keys defined in the SRS rather than adding new hardcoded ones.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from typing import Optional

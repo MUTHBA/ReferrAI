@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/user.py
+#
+# ORM model for the `users` table — the authentication root of the platform.
+# Every other entity (Partner, AuditLog, Setting.updated_by) ultimately FK to
+# a user_id. Role is enforced at the DB level via a CHECK constraint so invalid
+# values can never be persisted. UUIDs are generated on the Python side (no
+# DB round-trip). CURRENT_TIMESTAMP server_default is used instead of now() for
+# SQLite compatibility during local Alembic testing.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 

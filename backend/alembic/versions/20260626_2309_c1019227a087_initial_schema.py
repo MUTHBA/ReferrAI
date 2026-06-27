@@ -1,9 +1,16 @@
 """initial schema
 
 Revision ID: c1019227a087
-Revises: 
+Revises:
 Create Date: 2026-06-26 23:09:59.559812
 
+Creates all 16 ReferrAI tables: users, partner_tiers, partners, referral_links,
+referral_codes, referral_clicks, referral_conversions, commissions, wallets,
+withdrawals, transactions, settings, ai_scores, fraud_flags, discovered_partners,
+audit_logs. Tables are created in FK-safe dependency order in upgrade() and
+dropped in reverse order in downgrade(). All named CHECK constraints, composite
+indexes, and JSONB columns from DATABASE_DESIGN.md are included. This is the
+only migration with down_revision=None — it is the root of the migration chain.
 """
 from typing import Sequence, Union
 

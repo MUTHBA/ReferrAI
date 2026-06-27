@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/commission.py
+#
+# ORM model for the `commissions` table — the auto-calculated earnings record
+# created by the service layer immediately after each ReferralConversion is
+# recorded. The unique constraint on conversion_id ensures exactly one commission
+# per conversion. tier_id is snapshotted at calculation time so historical
+# earnings remain accurate even if a partner's tier changes later. Status
+# lifecycle: approved (default) → paid → reversed.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal

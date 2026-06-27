@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/fraud_flag.py
+#
+# AI-generated fraud alerts routed to the admin review queue. Per CLAUDE.md,
+# AI models must never auto-suspend accounts — they only create FraudFlag rows.
+# An active pending_review flag blocks withdrawal auto-approval in the service
+# layer. The status workflow is: pending_review → confirmed or dismissed.
+# reviewed_by and reviewed_at are nullable until an admin acts on the flag.
+# Each flag links to the AIScore row that triggered it for full auditability.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from typing import Optional

@@ -1,14 +1,23 @@
+# -----------------------------------------------------------------------------
+# backend/requirements.txt
+#
+# Core Python dependencies for the FastAPI backend — pinned to exact versions
+# for reproducible Docker builds. Key constraints: asyncpg >= 0.30.0 is required
+# for Python 3.13 pre-built wheels (0.29.x has no 3.13 wheel, causing source
+# compilation failures in Docker); sqlalchemy >= 2.0.36 avoids a FastIntFlag
+# crash on Python 3.13. psycopg2-binary is intentionally absent — Alembic
+# migrations run over asyncpg so no sync driver is needed. ML dependencies
+# (scikit-learn, sentence-transformers, shap) live in requirements-ml.txt.
+# -----------------------------------------------------------------------------
+
 alembic==1.18.5
 sqlalchemy[asyncio]==2.0.51
-asyncpg==0.29.0
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
+asyncpg==0.30.0
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-pydantic-settings==2.2.1
-python-multipart==0.0.9
-scikit-learn==1.4.2
-sentence-transformers==2.7.0
-shap==0.45.1
-faker==25.0.0
-qrcode[pil]==7.4.2
+pydantic-settings==2.8.1
+python-multipart==0.0.20
+faker==37.3.0
+qrcode[pil]==8.1

@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# backend/app/core/config.py
+#
+# Typed, env-file-aware application configuration via Pydantic Settings. Reads
+# .env first, then real environment variables override (Docker sets DATABASE_URL
+# directly). All other modules import the module-level `settings` singleton —
+# never instantiate Settings() a second time. extra="ignore" silences unrecognized
+# env vars injected by Docker. FRAUD_ALERT_THRESHOLD here is the startup default;
+# the service layer should prefer the runtime value from the settings DB table.
+# Developers: add new config keys here, never hardcode values in service files.
+# -----------------------------------------------------------------------------
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

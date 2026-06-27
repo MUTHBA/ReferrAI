@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/partner.py
+#
+# ORM models for `partner_tiers` (commission tier config) and `partners`
+# (partner profiles). PartnerTier defines the thresholds and commission rules
+# for each tier level; rank_order uniqueness prevents configuration conflicts.
+# Partner is linked one-to-one with a User (unique user_id FK). Tier assignment
+# is updated automatically by the service layer when a conversion is recorded.
+# is_synthetic flags ML training data so dashboards can exclude it by default.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal

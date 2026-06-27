@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/referral.py
+#
+# The four-table referral tracking pipeline: ReferralLink, ReferralCode,
+# ReferralClick, and ReferralConversion. A partner can share either a link
+# (slug-based URL) or a short code; ReferralClick enforces at the DB level that
+# at least one of the two FKs is non-null. ReferralConversion captures which
+# attribution model resolved the click (first_click or last_click — configurable
+# via the settings table). is_synthetic on clicks and conversions filters AI
+# training data from production analytics queries.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal

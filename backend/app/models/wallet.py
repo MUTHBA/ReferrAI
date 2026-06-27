@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/wallet.py
+#
+# Three-table payout subsystem: Wallet (running balance ledger per partner),
+# Withdrawal (payout requests with admin review workflow), and Transaction
+# (immutable double-entry ledger entries). Each partner has exactly one Wallet.
+# The balance >= 0 CHECK prevents overdrafts at the DB level. Withdrawal
+# auto-approval is gated in the service layer on the amount threshold and
+# absence of active fraud flags. Transaction is append-only — no updated_at.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal

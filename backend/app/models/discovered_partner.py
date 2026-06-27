@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/discovered_partner.py
+#
+# ML-identified partnership candidates surfaced by the AI partner discovery
+# pipeline. The AI module writes rows here; admins review and can invite
+# candidates directly from the dashboard. potential_score is nullable because
+# unscored candidates may be inserted before scoring completes — the range
+# CHECK (0-100) applies only when a score is present. ai_score_id optionally
+# links to the AIScore row that surfaced the candidate for traceability.
+# -----------------------------------------------------------------------------
+
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal

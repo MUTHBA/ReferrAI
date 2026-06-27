@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------
+# backend/app/models/__init__.py
+#
+# Re-exports all 16 ORM models from the app.models package. Alembic's env.py
+# does `from app.models import Base` — this import triggers all model files to
+# load, registering their tables on Base.metadata before autogenerate runs.
+# If a new model file is created, add it here or migrations will miss its table.
+# The explicit __all__ list makes IDE auto-import and static analysis reliable.
+# -----------------------------------------------------------------------------
+
 from app.models.base import Base
 from app.models.user import User
 from app.models.partner import Partner, PartnerTier

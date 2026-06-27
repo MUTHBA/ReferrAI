@@ -1,0 +1,23 @@
+<!-- ---------------------------------------------------------------------------
+  frontend/index.html
+
+  Vite entry HTML — the single-page app shell for all ReferrAI frontend routes.
+  The <div id="root"> is React's mount point; all UI is rendered into it via
+  src/main.jsx. The ESM script tag is processed by Vite, which injects hashed
+  asset links at build time for cache-busting. All routes are client-side via
+  react-router-dom — the server (nginx) must serve this file for every path.
+  Add global fonts, favicons, or meta tags here rather than in component files.
+--------------------------------------------------------------------------- -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReferrAI</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
