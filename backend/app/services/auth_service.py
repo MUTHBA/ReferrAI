@@ -2,17 +2,21 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password, verify_password
 from app.models.partner import Partner
 from app.models.user import User
 from app.models.wallet import Wallet
 from app.repositories.partner_repository import PartnerRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.wallet_repository import WalletRepository
-from app.schemas.auth import RegisterRequest
+from app.schemas.auth import LoginRequest, RegisterRequest
 
 
 class EmailAlreadyRegisteredError(Exception):
+    pass
+
+
+class InvalidCredentialsError(Exception):
     pass
 
 
@@ -49,3 +53,10 @@ class AuthService:
 
         await self.session.commit()
         return user
+
+    async def login(self, data: LoginRequest) -> str:
+        user = await self.user_repo.get_by_email(data.email)
+        if not user or not user.is_active or not verify_password(data.password, user.password_hash):
+            raise InvalidCredentialsError()
+
+        return create_access_token(subject=str(user.id), role=user.role, email=user.email)
