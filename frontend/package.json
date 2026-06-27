@@ -1,13 +1,3 @@
-// -----------------------------------------------------------------------------
-// frontend/package.json
-//
-// Frontend project manifest declaring React 18 + Vite 5 dependencies. "type":
-// "module" enables ESM throughout. Runtime deps: React 18, react-router-dom v6
-// (client-side routing), axios (API calls). Dev deps: Vite 5, @vitejs/plugin-react,
-// ESLint with react-hooks and react-refresh rules for a clean HMR dev experience.
-// Run `npm install` from frontend/ to install, then `npm run dev` to start the
-// Vite server. Update version pins here when upgrading the frontend toolchain.
-// -----------------------------------------------------------------------------
 {
   "name": "referrai-frontend",
   "version": "0.1.0",

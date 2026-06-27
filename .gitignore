@@ -36,6 +36,7 @@ pip-log.txt
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.npm-cache/
 *.tsbuildinfo
 
 # ── ML models & data ─────────────────────────────────────────────────────────
