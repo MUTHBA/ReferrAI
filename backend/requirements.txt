@@ -17,6 +17,9 @@ fastapi==0.115.12
 uvicorn[standard]==0.34.3
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# passlib 1.7.4's bcrypt backend self-test breaks under bcrypt>=4.1 (which
+# raises instead of truncating on inputs over 72 bytes) — pin below that.
+bcrypt==4.0.1
 pydantic-settings==2.8.1
 python-multipart==0.0.20
 faker==37.3.0
