@@ -1,3 +1,11 @@
+// -----------------------------------------------------------------------------
+// frontend/src/components/layout/Topbar.jsx
+//
+// Shared top bar shown above every Admin/Partner page — shows the logged-in
+// user's email (falling back to the JWT's `sub` claim if email isn't on the
+// decoded token) and a logout button that clears the session via useAuth.
+// -----------------------------------------------------------------------------
+
 import { useAuth } from '../../hooks/useAuth.js'
 
 const styles = {

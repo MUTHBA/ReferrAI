@@ -1,3 +1,12 @@
+// -----------------------------------------------------------------------------
+// frontend/src/components/layout/PartnerLayout.jsx
+//
+// Layout shell wrapped around every /partner/* route by AppRouter — renders
+// the partner nav in Sidebar, the Topbar, and the active page via
+// <Outlet/> inside PageWrapper. Only reachable past PartnerRoute's role
+// check.
+// -----------------------------------------------------------------------------
+
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar.jsx'
 import Topbar from './Topbar.jsx'

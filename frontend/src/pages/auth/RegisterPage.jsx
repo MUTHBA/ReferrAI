@@ -1,3 +1,14 @@
+// -----------------------------------------------------------------------------
+// frontend/src/pages/auth/RegisterPage.jsx
+//
+// Registration form for both roles. The `name` field only renders (and is
+// only sent) when role is "partner", matching the backend's
+// RegisterRequest validation. On successful registration, immediately
+// calls login() with the same credentials and redirects by role — so a new
+// user lands straight on their dashboard instead of having to log in
+// separately right after signing up.
+// -----------------------------------------------------------------------------
+
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { login, register, extractErrorMessage } from '../../api/authApi.js'

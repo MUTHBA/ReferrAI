@@ -1,3 +1,12 @@
+// -----------------------------------------------------------------------------
+// frontend/src/components/layout/Sidebar.jsx
+//
+// Shared sidebar nav shell used by both AdminLayout and PartnerLayout —
+// parameterized by `title` and `items` so each layout supplies its own nav
+// links instead of duplicating the component. Highlights the active route
+// via react-router-dom's NavLink.
+// -----------------------------------------------------------------------------
+
 import { NavLink } from 'react-router-dom'
 
 const styles = {

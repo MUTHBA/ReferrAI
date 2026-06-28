@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# backend/app/core/dependencies.py
+#
+# FastAPI dependency chain for authentication and role-based access control.
+# get_current_user decodes the bearer JWT, looks the user up by the "sub"
+# claim, and rejects expired/invalid tokens or inactive users with a 401.
+# require_admin and require_partner wrap it and add a 403 if the user's role
+# doesn't match. Route handlers gate access by declaring
+# `Depends(require_admin)` / `Depends(require_partner)` instead of checking
+# roles inline.
+# -----------------------------------------------------------------------------
+
 import uuid
 
 from fastapi import Depends, HTTPException, status

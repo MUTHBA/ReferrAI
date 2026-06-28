@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------
+# backend/app/api/v1/routes/auth.py
+#
+# Auth endpoints: register, login, me, forgot-password, reset-password.
+# Mounted at /api/v1/auth via app.include_router() in main.py. Each handler
+# translates a service-layer exception into the appropriate HTTP status
+# (409 duplicate email, 401 bad credentials, 400 bad reset token) — business
+# logic itself lives in AuthService, not here.
+# -----------------------------------------------------------------------------
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 

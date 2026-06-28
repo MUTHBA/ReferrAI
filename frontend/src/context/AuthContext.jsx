@@ -1,3 +1,16 @@
+// -----------------------------------------------------------------------------
+// frontend/src/context/AuthContext.jsx
+//
+// Holds the logged-in user's identity client-side. The JWT itself lives in
+// localStorage (read by axiosInstance's request interceptor); this context
+// just decodes it into a plain object (`sub`/`role`/`email`/`exp`) for
+// components to read via useAuth(). initialUser() rehydrates that decoded
+// user from localStorage on first render so a page refresh doesn't log
+// the user out. decodeToken() treats an already-expired token as logged
+// out. login() returns the resolved user so callers (LoginPage,
+// RegisterPage) can redirect immediately instead of waiting on a re-render.
+// -----------------------------------------------------------------------------
+
 import { createContext, useContext, useMemo, useState } from 'react'
 
 const AuthContext = createContext(null)

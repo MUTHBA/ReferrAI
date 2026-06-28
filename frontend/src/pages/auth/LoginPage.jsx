@@ -1,3 +1,14 @@
+// -----------------------------------------------------------------------------
+// frontend/src/pages/auth/LoginPage.jsx
+//
+// Email/password login form. On success, decodes the returned JWT via
+// useAuth().login() and redirects by role (admin → /admin, everyone else →
+// /partner). Backend error messages (401 bad credentials, 422 validation)
+// are surfaced inline via extractErrorMessage rather than thrown to a
+// global handler, since the global axios 401 interceptor deliberately
+// ignores the login endpoint's own 401s — see axiosInstance.js.
+// -----------------------------------------------------------------------------
+
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { login, extractErrorMessage } from '../../api/authApi.js'

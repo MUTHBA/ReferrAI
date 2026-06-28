@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// frontend/.eslintrc.cjs
+//
+// ESLint v8 flat-style legacy config for the frontend, referenced by the
+// `lint` script in package.json. Extends the recommended rule sets for
+// plain JS, React, and react-hooks; disables react/prop-types (no
+// PropTypes used in this codebase) and react/react-in-jsx-scope (not
+// needed with the React 18 JSX transform).
+// -----------------------------------------------------------------------------
+
 module.exports = {
   env: {
     browser: true,

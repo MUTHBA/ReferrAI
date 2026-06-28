@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# backend/app/schemas/auth.py
+#
+# Pydantic request/response shapes for the auth routes: register, login,
+# /me, and the forgot/reset-password pair. RegisterRequest enforces a
+# minimum password length and requires `name` when role is "partner" (a
+# Partner row gets created alongside the User in that case). Email format is
+# validated with a plain regex rather than pydantic's EmailStr, since
+# EmailStr needs the optional email-validator package, which isn't in
+# requirements.txt.
+# -----------------------------------------------------------------------------
+
 import re
 import uuid
 from datetime import datetime
