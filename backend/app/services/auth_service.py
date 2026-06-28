@@ -2,7 +2,13 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    create_password_reset_token,
+    decode_password_reset_token,
+    hash_password,
+    verify_password,
+)
 from app.models.partner import Partner
 from app.models.user import User
 from app.models.wallet import Wallet
@@ -17,6 +23,10 @@ class EmailAlreadyRegisteredError(Exception):
 
 
 class InvalidCredentialsError(Exception):
+    pass
+
+
+class InvalidResetTokenError(Exception):
     pass
 
 
@@ -60,3 +70,26 @@ class AuthService:
             raise InvalidCredentialsError()
 
         return create_access_token(subject=str(user.id), role=user.role, email=user.email)
+
+    async def forgot_password(self, email: str) -> None:
+        user = await self.user_repo.get_by_email(email)
+        if not user:
+            return
+
+        token = create_password_reset_token(str(user.id))
+        # Email sending is out of scope for this project — log the token so it
+        # can be used to demo the reset flow.
+        print(f"[password reset] token for {email}: {token}")
+
+    async def reset_password(self, token: str, new_password: str) -> None:
+        try:
+            user_id = decode_password_reset_token(token)
+        except ValueError as exc:
+            raise InvalidResetTokenError() from exc
+
+        user = await self.user_repo.get_by_id(uuid.UUID(user_id))
+        if not user:
+            raise InvalidResetTokenError()
+
+        user.password_hash = hash_password(new_password)
+        await self.session.commit()
