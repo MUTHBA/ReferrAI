@@ -33,3 +33,13 @@ class RegisterResponse(BaseModel):
     email: str
     role: str
     created_at: datetime
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
