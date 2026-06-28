@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# backend/app/core/security.py
+#
+# Password hashing (bcrypt via passlib) and JWT helpers used across the auth
+# module. create_access_token/decode_access_token handle login sessions;
+# create_password_reset_token/decode_password_reset_token are a separate,
+# shorter-lived token family tagged with a "purpose" claim so a reset token
+# can never be replayed as a regular access token. bcrypt is pinned to
+# 4.0.1 in requirements.txt — passlib 1.7.4's backend self-test breaks under
+# bcrypt>=4.1, which raises instead of truncating on inputs over 72 bytes.
+# -----------------------------------------------------------------------------
+
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt

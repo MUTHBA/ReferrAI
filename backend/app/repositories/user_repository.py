@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------
+# backend/app/repositories/user_repository.py
+#
+# Data access for the users table. get_by_email backs login/registration
+# uniqueness checks; get_by_id backs get_current_user's JWT-subject lookup.
+# create() adds and flushes (not commits) so callers can compose it into a
+# larger transaction, e.g. AuthService.register() creating User + Partner +
+# Wallet rows together.
+# -----------------------------------------------------------------------------
+
 import uuid
 from typing import Optional
 

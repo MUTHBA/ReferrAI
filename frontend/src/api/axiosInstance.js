@@ -1,3 +1,15 @@
+// -----------------------------------------------------------------------------
+// frontend/src/api/axiosInstance.js
+//
+// Shared axios instance for every API call in the app. The request
+// interceptor attaches the stored JWT as a Bearer header automatically, so
+// callers never set Authorization manually. The response interceptor
+// clears the token and bounces to /login on a 401 — except for the
+// login/register requests themselves, whose own 401/409 responses are
+// expected failures the calling form needs to display inline, not a
+// reason to force-navigate away before the error renders.
+// -----------------------------------------------------------------------------
+
 import axios from 'axios'
 
 const axiosInstance = axios.create({

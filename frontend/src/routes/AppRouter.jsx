@@ -1,3 +1,14 @@
+// -----------------------------------------------------------------------------
+// frontend/src/routes/AppRouter.jsx
+//
+// All client-side routes for the app, rendered inside the <BrowserRouter>
+// set up in App.jsx. Public auth routes (login/register/reset-password)
+// are unguarded; everything under /admin and /partner is nested inside
+// AdminRoute/PartnerRoute (role check) wrapping AdminLayout/PartnerLayout
+// (the visual shell). Add new pages here as their own <Route> rather than
+// inlining components, so each page stays in its own file under src/pages/.
+// -----------------------------------------------------------------------------
+
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AdminRoute from './AdminRoute.jsx'
 import PartnerRoute from './PartnerRoute.jsx'

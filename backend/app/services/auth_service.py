@@ -1,3 +1,15 @@
+# -----------------------------------------------------------------------------
+# backend/app/services/auth_service.py
+#
+# Business logic for the auth vertical: register, login, and the
+# forgot/reset-password pair. register() creates a User, and for
+# role="partner" also creates the linked Partner + Wallet rows, all in one
+# transaction. forgot_password() always returns silently regardless of
+# whether the email exists, to avoid leaking which emails are registered —
+# the route layer returns the same generic message either way. Email
+# sending is out of scope, so the reset token is printed to stdout instead.
+# -----------------------------------------------------------------------------
+
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession

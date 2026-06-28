@@ -1,3 +1,12 @@
+// -----------------------------------------------------------------------------
+// frontend/src/api/authApi.js
+//
+// Thin wrappers around the /auth/* backend endpoints, used by LoginPage and
+// RegisterPage. extractErrorMessage() normalizes FastAPI's two error
+// shapes — a plain string `detail` (e.g. 401/409) or a list of pydantic
+// validation error objects (422) — into one displayable string.
+// -----------------------------------------------------------------------------
+
 import axiosInstance from './axiosInstance.js'
 
 export async function login(email, password) {
