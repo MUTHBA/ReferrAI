@@ -30,7 +30,9 @@ export function AuthProvider({ children }) {
       user,
       login(token, userData) {
         localStorage.setItem('access_token', token)
-        setUser(userData ?? decodeToken(token))
+        const resolvedUser = userData ?? decodeToken(token)
+        setUser(resolvedUser)
+        return resolvedUser
       },
       logout() {
         localStorage.removeItem('access_token')

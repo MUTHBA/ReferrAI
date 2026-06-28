@@ -12,6 +12,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.routes import auth as auth_routes
+
 app = FastAPI(
     title="ReferrAI",
     description="Referral & commission management platform with integrated AI",
@@ -28,6 +30,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(auth_routes.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["ops"])
