@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.dependencies import get_current_user
+from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, RegisterResponse, TokenResponse
 from app.services.auth_service import AuthService, EmailAlreadyRegisteredError, InvalidCredentialsError
 
@@ -28,3 +30,13 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     return TokenResponse(access_token=token)
+
+
+@router.get("/me", response_model=RegisterResponse)
+async def me(current_user: User = Depends(get_current_user)) -> RegisterResponse:
+    return RegisterResponse(
+        id=current_user.id,
+        email=current_user.email,
+        role=current_user.role,
+        created_at=current_user.created_at,
+    )
