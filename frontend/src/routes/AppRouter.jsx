@@ -2,11 +2,13 @@
 // frontend/src/routes/AppRouter.jsx
 //
 // All client-side routes for the app, rendered inside the <BrowserRouter>
-// set up in App.jsx. Public auth routes (login/register/reset-password)
-// are unguarded; everything under /admin and /partner is nested inside
-// AdminRoute/PartnerRoute (role check) wrapping AdminLayout/PartnerLayout
-// (the visual shell). Add new pages here as their own <Route> rather than
-// inlining components, so each page stays in its own file under src/pages/.
+// set up in App.jsx. Public auth routes (login/register/forgot-password/
+// reset-password) are unguarded; everything under /admin and /partner is
+// nested inside AdminRoute/PartnerRoute (role check) wrapping
+// AdminLayout/PartnerLayout (the visual shell). Add new pages here as their
+// own <Route> rather than inlining components, so each page stays in its
+// own file under src/pages/. Added /forgot-password route to wire up the
+// previously-unlinked AUTH-004 password reset flow.
 // -----------------------------------------------------------------------------
 
 import { Navigate, Route, Routes } from 'react-router-dom'
@@ -16,6 +18,7 @@ import AdminLayout from '../components/layout/AdminLayout.jsx'
 import PartnerLayout from '../components/layout/PartnerLayout.jsx'
 import LoginPage from '../pages/auth/LoginPage.jsx'
 import RegisterPage from '../pages/auth/RegisterPage.jsx'
+import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage.jsx'
 import ResetPasswordPage from '../pages/auth/ResetPasswordPage.jsx'
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage.jsx'
 import PartnersPage from '../pages/admin/PartnersPage.jsx'
@@ -44,6 +47,7 @@ export default function AppRouter() {
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       <Route element={<AdminRoute />}>
