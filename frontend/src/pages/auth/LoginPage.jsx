@@ -6,7 +6,9 @@
 // /partner). Backend error messages (401 bad credentials, 422 validation)
 // are surfaced inline via extractErrorMessage rather than thrown to a
 // global handler, since the global axios 401 interceptor deliberately
-// ignores the login endpoint's own 401s — see axiosInstance.js.
+// ignores the login endpoint's own 401s — see axiosInstance.js. Added a
+// "Forgot password?" link to /forgot-password, wiring up the previously
+// orphaned AUTH-004 password reset flow.
 // -----------------------------------------------------------------------------
 
 import { useState } from 'react'
@@ -98,6 +100,9 @@ export default function LoginPage() {
           {submitting ? 'Logging in...' : 'Log in'}
         </button>
       </form>
+      <p>
+        <Link to="/forgot-password">Forgot password?</Link>
+      </p>
       <p>
         No account yet? <Link to="/register">Register</Link>
       </p>
