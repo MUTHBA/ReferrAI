@@ -79,6 +79,18 @@ async def update_partner(
     return PartnerResponse.model_validate(partner)
 
 
+@router.get("/me/partner", response_model=PartnerResponse)
+async def get_own_profile(
+    current_user: User = Depends(require_partner),
+    db: AsyncSession = Depends(get_db),
+) -> PartnerResponse:
+    try:
+        partner = await PartnerService(db).get_own_partner(current_user.id)
+    except PartnerNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner profile not found")
+    return PartnerResponse.model_validate(partner)
+
+
 @router.patch("/me/partner", response_model=PartnerResponse)
 async def update_own_profile(
     payload: PartnerSelfUpdateRequest,
@@ -98,7 +110,10 @@ async def update_own_profile(
 
 @router.get("/tiers", response_model=list[TierResponse])
 async def list_tiers(
-    _: User = Depends(require_admin),
+    # Tier definitions are not sensitive — readable by any authenticated user
+    # so partners can compute their own tier-progress bar (PRT-005). Writes
+    # below remain require_admin.
+    _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[TierResponse]:
     tiers = await PartnerService(db).list_tiers()

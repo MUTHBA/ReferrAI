@@ -4,11 +4,14 @@
 // Partner's own profile page (PRT-005). Shows name, tier, and a tier progress
 // bar toward the next tier's referral-count threshold. Partners can update
 // their own name, business name, category, and phone — status and tier are
-// admin-only fields and are not shown in the edit form here.
+// admin-only fields and are not shown in the edit form here. Uses
+// getOwnProfile() (/me/partner) rather than getPartner(id) — the JWT's
+// `sub` claim is the user_id, not the partner_id, so calling getPartner
+// with it always 404'd.
 // -----------------------------------------------------------------------------
 
 import { useEffect, useState } from 'react'
-import { extractErrorMessage, getPartner, listTiers, updateOwnProfile } from '../../api/partnerApi.js'
+import { extractErrorMessage, getOwnProfile, listTiers, updateOwnProfile } from '../../api/partnerApi.js'
 import { useAuth } from '../../hooks/useAuth.js'
 
 const styles = {
@@ -50,7 +53,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user?.sub) return
-    Promise.all([getPartner(user.sub), listTiers()])
+    Promise.all([getOwnProfile(), listTiers()])
       .then(([p, t]) => {
         setPartner(p)
         setTiers(t)

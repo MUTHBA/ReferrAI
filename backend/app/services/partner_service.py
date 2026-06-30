@@ -3,10 +3,14 @@
 #
 # Business logic for partner and tier management (PRT-001 through PRT-003).
 # get_partner() enforces the access rule: admins can fetch any partner,
-# partners can only fetch their own. update_partner() splits allowed fields
-# by role the same way. evaluate_tier_upgrade() is called after a commission
-# is earned — it only upgrades, never downgrades, and assigns the highest
-# qualifying tier by rank_order descending.
+# partners can only fetch their own. get_own_partner() resolves a partner
+# by the caller's user_id — needed because a partner's JWT only carries
+# user_id (sub), not their partner_id, so the frontend can't call
+# get_partner(partner_id) for "my own profile" without already knowing it.
+# update_partner() splits allowed fields by role the same way.
+# evaluate_tier_upgrade() is called after a commission is earned — it only
+# upgrades, never downgrades, and assigns the highest qualifying tier by
+# rank_order descending.
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -56,6 +60,12 @@ class PartnerService:
             raise PartnerNotFoundError(partner_id)
         if requesting_role != "admin" and partner.user_id != requesting_user_id:
             raise AccessDeniedError
+        return partner
+
+    async def get_own_partner(self, user_id: uuid.UUID) -> Partner:
+        partner = await self.repo.get_by_user_id(user_id)
+        if partner is None:
+            raise PartnerNotFoundError(user_id)
         return partner
 
     async def list_partners(self) -> list[Partner]:
