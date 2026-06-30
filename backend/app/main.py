@@ -7,7 +7,8 @@
 # at /api/docs; OpenAPI JSON at /api/openapi.json.
 # Added in COM-001/WAL-001: wallet_routes wired for wallet balance, transaction
 # history, and withdrawal request/review endpoints. Added in PRT-001/PRT-002:
-# partner_routes wired for partner profile and tier CRUD.
+# partner_routes wired for partner profile and tier CRUD. Added in RPT-001/002/003:
+# dashboard_routes wired for admin/partner KPI dashboards and CSV exports.
 # Developers: add new v1 routers with `app.include_router(router, prefix="/api/v1")`.
 # -----------------------------------------------------------------------------
 
@@ -15,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.routes import auth as auth_routes
+from app.api.v1.routes import dashboard as dashboard_routes
 from app.api.v1.routes import partners as partner_routes
 from app.api.v1.routes import referrals as referral_routes
 from app.api.v1.routes import settings as settings_routes
@@ -44,6 +46,7 @@ app.include_router(referral_routes.router, prefix="/api/v1")
 app.include_router(referral_routes.redirect_router)  # public /r/{slug} — no /api/v1 prefix
 app.include_router(wallet_routes.router, prefix="/api/v1")
 app.include_router(partner_routes.router, prefix="/api/v1")
+app.include_router(dashboard_routes.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["ops"])
