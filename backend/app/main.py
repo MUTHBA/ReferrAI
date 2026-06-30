@@ -3,9 +3,10 @@
 #
 # FastAPI application entry point — imported by uvicorn as `app.main:app`.
 # Wires global middleware (CORS allows the Vite dev server and nginx) and mounts
-# the ops health endpoint used by Docker health checks. API routes will be added
-# here via app.include_router() as features are built. Swagger UI is available
+# the ops health endpoint used by Docker health checks. Swagger UI is available
 # at /api/docs; OpenAPI JSON at /api/openapi.json.
+# Added in COM-001/WAL-001: wallet_routes wired for wallet balance, transaction
+# history, and withdrawal request/review endpoints.
 # Developers: add new v1 routers with `app.include_router(router, prefix="/api/v1")`.
 # -----------------------------------------------------------------------------
 
@@ -15,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.routes import auth as auth_routes
 from app.api.v1.routes import referrals as referral_routes
 from app.api.v1.routes import settings as settings_routes
+from app.api.v1.routes import wallet as wallet_routes
 
 app = FastAPI(
     title="ReferrAI",
@@ -38,6 +40,7 @@ app.include_router(auth_routes.router, prefix="/api/v1")
 app.include_router(settings_routes.router, prefix="/api/v1")
 app.include_router(referral_routes.router, prefix="/api/v1")
 app.include_router(referral_routes.redirect_router)  # public /r/{slug} — no /api/v1 prefix
+app.include_router(wallet_routes.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["ops"])
