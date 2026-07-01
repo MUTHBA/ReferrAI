@@ -32,6 +32,7 @@ from app.schemas.referral_conversion import (
     ConversionResponse,
     ConversionWithScoreResponse,
 )
+from app.services import ai_service
 from app.services.referral_click_service import ReferralClickService
 from app.services.referral_code_service import ReferralCodeService
 from app.services.referral_conversion_service import (
@@ -204,11 +205,12 @@ async def record_conversion(
 async def track_click(
     slug: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     utm_source: Optional[str] = None,
 ) -> RedirectResponse:
     service = ReferralClickService(db)
-    destination = await service.track(
+    destination, click_id = await service.track(
         slug=slug,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
@@ -219,4 +221,6 @@ async def track_click(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Referral link not found or inactive",
         )
+    if click_id is not None:
+        background_tasks.add_task(ai_service.score_fraud, db, click_id)
     return RedirectResponse(url=destination, status_code=302)

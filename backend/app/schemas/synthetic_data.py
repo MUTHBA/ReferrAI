@@ -22,3 +22,7 @@ class SyntheticDataResponse(BaseModel):
     partners_created: int
     clicks_created: int
     conversions_created: int
+
+
+class ChurnScoringResponse(BaseModel):
+    partners_scored: int
