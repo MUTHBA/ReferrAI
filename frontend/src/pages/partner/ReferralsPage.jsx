@@ -1,12 +1,14 @@
 // -----------------------------------------------------------------------------
 // frontend/src/pages/partner/ReferralsPage.jsx
 //
-// Partner referral management (REF-006). Two sections: Referral Links (with
-// QR codes) and Referral Codes. Both sections load on mount and update
-// optimistically after creation — the new item is prepended to its list from
-// the API response so no re-fetch is needed. Copy-to-clipboard feedback uses
-// a 2-second "Copied!" state keyed by item id. The QR modal is rendered at
-// the page level (not inside each card) to avoid stacking context issues.
+// Partner referral management (REF-006 + AI-QUAL-004). Three sections:
+//   1. My Referral Links  — link cards with copy + QR buttons
+//   2. My Referral Codes  — code cards with copy button
+//   3. My Conversions     — conversion cards with AI quality score badge
+//
+// Quality score badges are color-coded: green ≥70, yellow 40–69, red <40,
+// grey "Pending" when the background scoring task has not yet completed.
+// All styles are inline — no CSS files, no new dependencies.
 // -----------------------------------------------------------------------------
 
 import { useEffect, useState } from 'react'
@@ -16,6 +18,7 @@ import {
   createLink,
   extractErrorMessage,
   getMyCode,
+  getMyConversions,
   getMyLinks,
 } from '../../api/referrals.js'
 
@@ -64,6 +67,18 @@ const styles = {
     gap: '10px',
   },
 
+  conversionCard: {
+    flex: '1 1 200px',
+    maxWidth: '300px',
+    padding: '20px',
+    borderRadius: '8px',
+    backgroundColor: '#ffffff',
+    border: '1px solid #e5e7eb',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+
   referralUrl: {
     fontFamily: 'monospace',
     fontSize: '13px',
@@ -81,9 +96,22 @@ const styles = {
     margin: 0,
   },
 
+  conversionValue: {
+    fontSize: '18px',
+    fontWeight: 700,
+    color: '#111827',
+    margin: 0,
+  },
+
   metaText: { fontSize: '12px', color: '#6b7280', margin: 0 },
 
   cardActions: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' },
+
+  cardRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
 
   btnPrimary: {
     padding: '9px 18px',
@@ -158,6 +186,49 @@ function fmtDate(iso) {
   })
 }
 
+function fmtCurrency(value) {
+  return `$${parseFloat(value).toFixed(2)}`
+}
+
+// ---------------------------------------------------------------------------
+// Score badge
+// ---------------------------------------------------------------------------
+
+function scoreBadgeStyle(score) {
+  if (score === null || score === undefined) {
+    return { bg: '#f3f4f6', color: '#6b7280', border: '#d1d5db', label: 'Pending' }
+  }
+  if (score >= 70) {
+    return { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0', label: String(Math.round(score)) }
+  }
+  if (score >= 40) {
+    return { bg: '#fefce8', color: '#a16207', border: '#fde68a', label: String(Math.round(score)) }
+  }
+  return { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca', label: String(Math.round(score)) }
+}
+
+function QualityBadge({ score }) {
+  const { bg, color, border, label } = scoreBadgeStyle(score)
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 9px',
+        borderRadius: '12px',
+        fontSize: '11px',
+        fontWeight: 700,
+        letterSpacing: '0.02em',
+        border: `1px solid ${border}`,
+        backgroundColor: bg,
+        color,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -180,6 +251,7 @@ function CopyButton({ text, itemId, copiedId, label, onCopy }) {
 export default function ReferralsPage() {
   const [links, setLinks] = useState([])
   const [codes, setCodes] = useState([])
+  const [conversions, setConversions] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
 
@@ -191,17 +263,15 @@ export default function ReferralsPage() {
   const [creatingCode, setCreatingCode] = useState(false)
   const [codeError, setCodeError] = useState('')
 
-  // id of the item whose copy button currently shows "Copied!"
   const [copiedId, setCopiedId] = useState(null)
-
-  // base64 PNG string for the QR modal, or null when closed
   const [qrData, setQrData] = useState(null)
 
   useEffect(() => {
-    Promise.all([getMyLinks(), getMyCode()])
-      .then(([l, c]) => {
+    Promise.all([getMyLinks(), getMyCode(), getMyConversions()])
+      .then(([l, c, convs]) => {
         setLinks(l)
         setCodes(c)
+        setConversions(convs)
       })
       .catch(() => setLoadError('Failed to load referral data.'))
       .finally(() => setLoading(false))
@@ -213,7 +283,7 @@ export default function ReferralsPage() {
       setCopiedId(id)
       setTimeout(() => setCopiedId(null), 2000)
     } catch {
-      // Clipboard API unavailable in this context — fail silently
+      // Clipboard API unavailable — fail silently
     }
   }
 
@@ -375,6 +445,32 @@ export default function ReferralsPage() {
                     onCopy={handleCopy}
                   />
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ---- My Conversions ---- */}
+      <div style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <h2 style={styles.sectionTitle}>My Conversions</h2>
+        </div>
+
+        {conversions.length === 0 ? (
+          <p style={styles.empty}>No conversions recorded yet.</p>
+        ) : (
+          <div style={styles.cardGrid}>
+            {conversions.map((conv) => (
+              <div key={conv.id} style={styles.conversionCard}>
+                <div style={styles.cardRow}>
+                  <p style={styles.conversionValue}>{fmtCurrency(conv.conversion_value)}</p>
+                  <QualityBadge score={conv.quality_score} />
+                </div>
+                <p style={styles.metaText}>{fmtDate(conv.converted_at)}</p>
+                <p style={styles.metaText}>
+                  {conv.attribution_model.replace('_', ' ')}
+                </p>
               </div>
             ))}
           </div>

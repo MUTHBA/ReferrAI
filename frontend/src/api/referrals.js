@@ -33,6 +33,11 @@ export async function createCode() {
   return data
 }
 
+export async function getMyConversions() {
+  const { data } = await axiosInstance.get('/referrals/conversions')
+  return data
+}
+
 export function extractErrorMessage(error) {
   const detail = error.response?.data?.detail
 
