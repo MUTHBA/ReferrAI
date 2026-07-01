@@ -13,17 +13,25 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import require_admin, require_partner
+from app.models.ai_score import AIScore
+from app.models.referral import ReferralConversion
 from app.models.user import User
+from app.repositories.partner_repository import PartnerRepository
 from app.schemas.referral import (
     ReferralCodeResponse,
     ReferralLinkCreateRequest,
     ReferralLinkResponse,
 )
-from app.schemas.referral_conversion import ConversionCreate, ConversionResponse
+from app.schemas.referral_conversion import (
+    ConversionCreate,
+    ConversionResponse,
+    ConversionWithScoreResponse,
+)
 from app.services.referral_click_service import ReferralClickService
 from app.services.referral_code_service import ReferralCodeService
 from app.services.referral_conversion_service import (
@@ -40,6 +48,48 @@ router = APIRouter(prefix="/referrals", tags=["referrals"])
 
 # Public redirect — mounted at root (no prefix) in main.py
 redirect_router = APIRouter(tags=["referrals"])
+
+
+@router.get("/conversions", response_model=list[ConversionWithScoreResponse])
+async def list_my_conversions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_partner),
+) -> list[ConversionWithScoreResponse]:
+    """Return the authenticated partner's conversions with their latest quality score."""
+    partner = await PartnerRepository(db).get_by_user_id(current_user.id)
+    if partner is None:
+        return []
+
+    # Correlated scalar subquery: most recent quality score for each conversion.
+    latest_quality = (
+        select(AIScore.score)
+        .where(AIScore.entity_id == ReferralConversion.id)
+        .where(AIScore.entity_type == "referral")
+        .where(AIScore.score_type == "quality")
+        .order_by(AIScore.calculated_at.desc())
+        .limit(1)
+        .correlate(ReferralConversion)
+        .scalar_subquery()
+    )
+
+    stmt = (
+        select(ReferralConversion, latest_quality.label("quality_score"))
+        .where(ReferralConversion.partner_id == partner.id)
+        .where(ReferralConversion.is_synthetic == False)  # noqa: E712
+        .order_by(ReferralConversion.converted_at.desc())
+    )
+
+    rows = (await db.execute(stmt)).all()
+    return [
+        ConversionWithScoreResponse(
+            id=conv.id,
+            conversion_value=conv.conversion_value,
+            attribution_model=conv.attribution_model,
+            converted_at=conv.converted_at,
+            quality_score=float(score) if score is not None else None,
+        )
+        for conv, score in rows
+    ]
 
 
 @router.get("/links", response_model=list[ReferralLinkResponse])

@@ -20,6 +20,7 @@ from app.repositories.partner_repository import PartnerRepository
 from app.repositories.referral_code_repository import ReferralCodeRepository
 from app.repositories.referral_conversion_repository import ReferralConversionRepository
 from app.schemas.referral_conversion import ConversionCreate
+from app.services import ai_service
 from app.services.attribution_service import AttributionService
 from app.services.commission_service import CommissionService
 from app.services.setting_service import SettingService
@@ -112,8 +113,7 @@ class ReferralConversionService:
         # 7. Commit: conversion + commission + partner counters land atomically.
         await self.session.commit()
 
-        # 8. Background task slot for AI scoring (AI-SCR-001).
-        # TODO: AI scoring background task — replace this stub when AI-SCR-001 ships.
-        background_tasks.add_task(lambda: None)
+        # 8. AI quality scoring runs after the response is sent (AI-QUAL-002).
+        background_tasks.add_task(ai_service.score_referral_quality, db, conversion.id)
 
         return conversion

@@ -39,3 +39,17 @@ class ConversionResponse(BaseModel):
     attribution_model: str
     converted_at: datetime
     is_synthetic: bool
+
+
+class ConversionWithScoreResponse(BaseModel):
+    """Conversion summary with its most recent AI quality score (AI-QUAL-004).
+
+    quality_score is None when the background scoring task has not completed
+    yet — the UI should display "Pending" in that case.
+    """
+
+    id: uuid.UUID
+    conversion_value: Decimal
+    attribution_model: str
+    converted_at: datetime
+    quality_score: Optional[float] = None

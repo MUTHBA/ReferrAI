@@ -25,7 +25,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 @router.post(
     "/synthetic-data",
     response_model=SyntheticDataResponse,
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_201_CREATED,
     summary="Generate synthetic ML training data",
 )
 async def generate_synthetic_data(
