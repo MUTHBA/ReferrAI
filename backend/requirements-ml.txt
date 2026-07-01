@@ -14,5 +14,6 @@
 # AI/ML dependencies — heavy, install separately after core requirements.
 # In Docker: install during phase-4 feature work, not in the base image.
 scikit-learn==1.4.2
+joblib==1.4.2
 sentence-transformers==2.7.0
 shap==0.45.1
