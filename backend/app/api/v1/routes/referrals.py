@@ -11,20 +11,26 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_partner
+from app.core.dependencies import require_admin, require_partner
 from app.models.user import User
 from app.schemas.referral import (
     ReferralCodeResponse,
     ReferralLinkCreateRequest,
     ReferralLinkResponse,
 )
+from app.schemas.referral_conversion import ConversionCreate, ConversionResponse
 from app.services.referral_click_service import ReferralClickService
 from app.services.referral_code_service import ReferralCodeService
+from app.services.referral_conversion_service import (
+    ConversionPartnerNotFoundError,
+    ReferralCodeNotFoundError,
+    ReferralConversionService,
+)
 from app.services.referral_link_service import PartnerProfileNotFoundError, ReferralLinkService
 
 logger = logging.getLogger(__name__)
@@ -34,6 +40,42 @@ router = APIRouter(prefix="/referrals", tags=["referrals"])
 
 # Public redirect — mounted at root (no prefix) in main.py
 redirect_router = APIRouter(tags=["referrals"])
+
+
+@router.get("/links", response_model=list[ReferralLinkResponse])
+async def list_referral_links(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_partner),
+) -> list[ReferralLinkResponse]:
+    """Return all referral links belonging to the authenticated partner."""
+    service = ReferralLinkService(db)
+    links = await service.list_for_partner(current_user.id)
+    base_url = str(request.base_url)
+    return [
+        ReferralLinkResponse(
+            id=link.id,
+            partner_id=link.partner_id,
+            slug=link.slug,
+            referral_url=f"{base_url}r/{link.slug}",
+            destination_url=link.destination_url,
+            qr_code_data=link.qr_code_data,
+            is_active=link.is_active,
+            created_at=link.created_at,
+        )
+        for link in links
+    ]
+
+
+@router.get("/codes", response_model=list[ReferralCodeResponse])
+async def list_referral_codes(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_partner),
+) -> list[ReferralCodeResponse]:
+    """Return all referral codes belonging to the authenticated partner."""
+    service = ReferralCodeService(db)
+    codes = await service.list_for_partner(current_user.id)
+    return [ReferralCodeResponse.model_validate(c) for c in codes]
 
 
 @router.post("/links", response_model=ReferralLinkResponse, status_code=status.HTTP_201_CREATED)
@@ -84,6 +126,28 @@ async def create_referral_code(
         )
 
     return ReferralCodeResponse.model_validate(code)
+
+
+@router.post(
+    "/conversions",
+    response_model=ConversionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_conversion(
+    payload: ConversionCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ConversionResponse:
+    """Record a referral conversion, attribute it to a click, and calculate commission."""
+    service = ReferralConversionService(db)
+    try:
+        conversion = await service.record_conversion(payload, background_tasks)
+    except ReferralCodeNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ConversionPartnerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    return ConversionResponse.model_validate(conversion)
 
 
 @redirect_router.get("/r/{slug}", name="track_click")

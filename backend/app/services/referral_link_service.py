@@ -45,6 +45,13 @@ class ReferralLinkService:
                 return slug
         raise RuntimeError("Could not generate a unique referral slug after 10 attempts")
 
+    async def list_for_partner(self, user_id: uuid.UUID) -> list[ReferralLink]:
+        """Return all links owned by the partner associated with this user."""
+        partner = await PartnerRepository(self.session).get_by_user_id(user_id)
+        if partner is None:
+            return []
+        return await self.repo.list_by_partner(partner.id)
+
     async def create(
         self, user_id: uuid.UUID, destination_url: str, base_url: str
     ) -> ReferralLink:

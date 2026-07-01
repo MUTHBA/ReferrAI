@@ -27,6 +27,13 @@ class ReferralCodeService:
         self.session = session
         self.repo = ReferralCodeRepository(session)
 
+    async def list_for_partner(self, user_id: uuid.UUID) -> list[ReferralCode]:
+        """Return all codes owned by the partner associated with this user."""
+        partner = await PartnerRepository(self.session).get_by_user_id(user_id)
+        if partner is None:
+            return []
+        return await self.repo.list_by_partner(partner.id)
+
     async def _unique_code(self) -> str:
         for _ in range(10):
             code = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(_CODE_LENGTH))

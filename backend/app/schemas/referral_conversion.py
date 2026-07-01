@@ -1,0 +1,41 @@
+# -----------------------------------------------------------------------------
+# backend/app/schemas/referral_conversion.py
+#
+# Pydantic schemas for the conversion recording endpoint (REF-004).
+# ConversionCreate accepts the referral_code as a human-readable string (not
+# UUID) because callers know the code they issued, not its database ID — the
+# service resolves it. ConversionResponse mirrors every column of the
+# ReferralConversion model and uses from_attributes for ORM compatibility.
+# -----------------------------------------------------------------------------
+
+import uuid
+from datetime import datetime
+from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
+
+
+class ConversionCreate(BaseModel):
+    """Payload for recording a new referral conversion."""
+
+    partner_id: uuid.UUID
+    referral_code: Optional[str] = None
+    click_id: Optional[uuid.UUID] = None
+    conversion_value: Decimal
+
+
+class ConversionResponse(BaseModel):
+    """Full representation of a recorded ReferralConversion row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    partner_id: uuid.UUID
+    click_id: Optional[uuid.UUID]
+    referral_link_id: Optional[uuid.UUID]
+    referral_code_id: Optional[uuid.UUID]
+    conversion_value: Decimal
+    attribution_model: str
+    converted_at: datetime
+    is_synthetic: bool
