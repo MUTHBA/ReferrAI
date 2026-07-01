@@ -30,17 +30,19 @@ class ReferralClickService:
         ip_address: Optional[str],
         user_agent: Optional[str],
         utm_source: Optional[str],
-    ) -> Optional[str]:
-        """Return the destination URL if the slug is active, None otherwise.
+    ) -> tuple[Optional[str], Optional[uuid.UUID]]:
+        """Return (destination_url, click_id) if the slug is active, (None, None) otherwise.
 
         The click insert is best-effort: if it fails the exception is logged,
-        the session is rolled back, and the destination URL is still returned
-        so the visitor's redirect is never blocked.
+        the session is rolled back, and (destination_url, None) is returned so
+        the visitor's redirect is never blocked. Callers that schedule fraud
+        scoring as a background task must guard on click_id being non-None.
         """
         link = await ReferralLinkRepository(self.session).get_by_slug(slug)
         if link is None or not link.is_active:
-            return None
+            return None, None
 
+        click_id: Optional[uuid.UUID] = None
         try:
             click = ReferralClick(
                 id=uuid.uuid4(),
@@ -53,10 +55,11 @@ class ReferralClickService:
             )
             await ReferralClickRepository(self.session).create(click)
             await self.session.commit()
+            click_id = click.id
         except Exception:
             logger.exception(
                 "Failed to record referral click for slug %r — redirecting anyway", slug
             )
             await self.session.rollback()
 
-        return link.destination_url
+        return link.destination_url, click_id

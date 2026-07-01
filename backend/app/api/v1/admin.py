@@ -2,21 +2,30 @@
 # backend/app/api/v1/admin.py
 #
 # Admin-only API endpoints that don't belong to a specific domain router.
-# Currently exposes one endpoint:
-#   POST /api/v1/admin/synthetic-data — triggers synthetic ML training data
-#   generation via SyntheticDataGenerator (AI-DATA-001/002). Requires admin
-#   role. The endpoint is intentionally slow for large requests (bcrypt at
-#   module load, sequential DB commits per generator step) — callers should
-#   treat it as a long-running operation and not set aggressive timeouts.
+# Exposes two endpoints:
+#   POST /api/v1/admin/synthetic-data       — triggers synthetic ML training
+#       data generation (AI-DATA-001/002). Intentionally slow for large
+#       requests; callers should not set aggressive timeouts.
+#   POST /api/v1/admin/run-churn-scoring    — scores every active non-synthetic
+#       partner for churn risk (AI-CHURN-003). Calls score_churn() per partner
+#       sequentially; each call commits independently and swallows exceptions
+#       so a single model failure does not abort the batch.
 # -----------------------------------------------------------------------------
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import require_admin
+from app.models.partner import Partner
 from app.models.user import User
-from app.schemas.synthetic_data import SyntheticDataRequest, SyntheticDataResponse
+from app.schemas.synthetic_data import (
+    ChurnScoringResponse,
+    SyntheticDataRequest,
+    SyntheticDataResponse,
+)
+from app.services import ai_service
 from app.services.synthetic_data_service import generate_and_insert
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -34,3 +43,33 @@ async def generate_synthetic_data(
     _: User = Depends(require_admin),
 ) -> SyntheticDataResponse:
     return await generate_and_insert(db, payload)
+
+
+@router.post(
+    "/run-churn-scoring",
+    response_model=ChurnScoringResponse,
+    summary="Score all active partners for churn risk",
+)
+async def run_churn_scoring(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> ChurnScoringResponse:
+    """Compute and persist a churn risk score for every active non-synthetic partner.
+
+    Iterates all partners with status='active' and is_synthetic=False, calling
+    score_churn() for each. Each call commits independently and swallows its own
+    exceptions, so a single model failure or missing feature does not abort the
+    batch. The final count reflects the number of partners attempted, not
+    necessarily the number of successfully stored scores.
+    """
+    partners_result = await db.execute(
+        select(Partner)
+        .where(Partner.status == "active")
+        .where(Partner.is_synthetic == False)  # noqa: E712
+    )
+    partners = partners_result.scalars().all()
+
+    for partner in partners:
+        await ai_service.score_churn(db, partner.id)
+
+    return ChurnScoringResponse(partners_scored=len(partners))
