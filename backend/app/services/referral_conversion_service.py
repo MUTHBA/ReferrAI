@@ -2,11 +2,11 @@
 # backend/app/services/referral_conversion_service.py
 #
 # Orchestrates the full conversion recording flow: code resolution, attribution,
-# conversion insert, commission calculation, and partner counter increment — all
-# flushed and committed in one transaction. CommissionService.calculate_for_conversion()
-# deliberately flushes without committing (its own contract) so we can compose
-# it here and commit once. The background-task slot is reserved for AI scoring
-# (AI-SCR-001); it is a no-op stub until that task ships.
+# conversion insert, commission calculation, wallet credit, and partner counter
+# increment — all flushed and committed in one transaction.
+# CommissionService.calculate_for_conversion() and WalletService.credit() both
+# flush without committing so they can be composed here with a single commit.
+# AI quality scoring is dispatched as a FastAPI background task after commit.
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -24,6 +24,7 @@ from app.services import ai_service
 from app.services.attribution_service import AttributionService
 from app.services.commission_service import CommissionService
 from app.services.setting_service import SettingService
+from app.services.wallet_service import WalletService
 
 
 class ReferralCodeNotFoundError(Exception):
@@ -53,11 +54,10 @@ class ReferralConversionService:
         data: ConversionCreate,
         background_tasks: BackgroundTasks,
     ) -> ReferralConversion:
-        """Record a conversion, calculate its commission, and update partner counters.
+        """Record a conversion, calculate commission, credit wallet, update counters.
 
-        All writes (conversion row, commission row, partner counter increments) are
-        flushed individually but committed together at the end of this method so
-        the transaction is all-or-nothing.
+        All writes are flushed individually but committed together so the
+        transaction is all-or-nothing.
         """
         # 1. Resolve referral_code string → ReferralCode UUID if provided.
         referral_code_id: uuid.UUID | None = None
@@ -77,8 +77,6 @@ class ReferralConversionService:
         )
 
         # 3. Read attribution model for storage on the conversion row.
-        #    AttributionService also reads this; two reads of the same setting is
-        #    acceptable here — caching is a future optimisation.
         attribution_model: str = await SettingService(self.session).get(
             "referral.attribution_model", "last_click"
         )
@@ -96,11 +94,19 @@ class ReferralConversionService:
         )
         await ReferralConversionRepository(self.session).create(conversion)
 
-        # 5. Calculate commission (flushes its own row, does not commit — that is
-        #    CommissionService's stated contract so we can own the single commit here).
-        await CommissionService(self.session).calculate_for_conversion(conversion.id)
+        # 5. Calculate commission (flushes commission row, does not commit).
+        commission = await CommissionService(self.session).calculate_for_conversion(
+            conversion.id
+        )
 
-        # 6. Increment denormalised partner counters in the same transaction.
+        # 6. Credit the partner's wallet with the commission amount (flushes, no commit).
+        await WalletService(self.session).credit(
+            partner_id=data.partner_id,
+            amount=commission.amount,
+            reference_id=conversion.id,
+        )
+
+        # 7. Increment denormalised partner counters in the same transaction.
         partner = await PartnerRepository(self.session).get_by_id(data.partner_id)
         if partner is None:
             raise ConversionPartnerNotFoundError(data.partner_id)
@@ -110,10 +116,12 @@ class ReferralConversionService:
         )
         await self.session.flush()
 
-        # 7. Commit: conversion + commission + partner counters land atomically.
+        # 8. Commit: conversion + commission + wallet credit + partner counters atomically.
         await self.session.commit()
 
-        # 8. AI quality scoring runs after the response is sent (AI-QUAL-002).
-        background_tasks.add_task(ai_service.score_referral_quality, db, conversion.id)
+        # 9. AI quality scoring runs after the response is sent (AI-QUAL-002).
+        background_tasks.add_task(
+            ai_service.score_referral_quality, self.session, conversion.id
+        )
 
         return conversion
