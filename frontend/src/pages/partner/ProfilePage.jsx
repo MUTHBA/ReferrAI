@@ -11,6 +11,8 @@
 // -----------------------------------------------------------------------------
 
 import { useEffect, useState } from 'react'
+import { getLatestScore } from '../../api/aiScores.js'
+import ScoreBadge from '../../components/ai/ScoreBadge.jsx'
 import { extractErrorMessage, getOwnProfile, listTiers, updateOwnProfile } from '../../api/partnerApi.js'
 import { useAuth } from '../../hooks/useAuth.js'
 
@@ -50,6 +52,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [churnScore, setChurnScore] = useState(null)
 
   useEffect(() => {
     if (!user?.sub) return
@@ -63,6 +66,8 @@ export default function ProfilePage() {
           category: p.category ?? '',
           phone: p.phone ?? '',
         })
+        // Fetch churn score — null on 404 (not scored yet)
+        getLatestScore(p.id, 'churn_risk').then(setChurnScore)
       })
       .catch((err) => setError(extractErrorMessage(err)))
       .finally(() => setLoading(false))
@@ -128,6 +133,14 @@ export default function ProfilePage() {
         <div style={styles.infoItem}>
           <span style={styles.infoLabel}>Revenue Contributed</span>
           <span style={styles.infoValue}>${Number(partner.total_revenue_contribution).toFixed(2)}</span>
+        </div>
+        <div style={styles.infoItem}>
+          <span style={styles.infoLabel}>Churn Risk</span>
+          <ScoreBadge
+            score={churnScore?.score ?? null}
+            label=""
+            explanation={churnScore?.explanation ?? null}
+          />
         </div>
       </div>
 

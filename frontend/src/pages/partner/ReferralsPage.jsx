@@ -12,6 +12,7 @@
 // -----------------------------------------------------------------------------
 
 import { useEffect, useState } from 'react'
+import ScoreBadge from '../../components/ai/ScoreBadge.jsx'
 import QRCodeModal from '../../components/referrals/QRCodeModal.jsx'
 import {
   createCode,
@@ -190,44 +191,6 @@ function fmtCurrency(value) {
   return `$${parseFloat(value).toFixed(2)}`
 }
 
-// ---------------------------------------------------------------------------
-// Score badge
-// ---------------------------------------------------------------------------
-
-function scoreBadgeStyle(score) {
-  if (score === null || score === undefined) {
-    return { bg: '#f3f4f6', color: '#6b7280', border: '#d1d5db', label: 'Pending' }
-  }
-  if (score >= 70) {
-    return { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0', label: String(Math.round(score)) }
-  }
-  if (score >= 40) {
-    return { bg: '#fefce8', color: '#a16207', border: '#fde68a', label: String(Math.round(score)) }
-  }
-  return { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca', label: String(Math.round(score)) }
-}
-
-function QualityBadge({ score }) {
-  const { bg, color, border, label } = scoreBadgeStyle(score)
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        padding: '2px 9px',
-        borderRadius: '12px',
-        fontSize: '11px',
-        fontWeight: 700,
-        letterSpacing: '0.02em',
-        border: `1px solid ${border}`,
-        backgroundColor: bg,
-        color,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label}
-    </span>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -465,7 +428,11 @@ export default function ReferralsPage() {
               <div key={conv.id} style={styles.conversionCard}>
                 <div style={styles.cardRow}>
                   <p style={styles.conversionValue}>{fmtCurrency(conv.conversion_value)}</p>
-                  <QualityBadge score={conv.quality_score} />
+                  <ScoreBadge
+                    score={conv.quality_score}
+                    label="Quality"
+                    explanation={conv.quality_explanation ?? null}
+                  />
                 </div>
                 <p style={styles.metaText}>{fmtDate(conv.converted_at)}</p>
                 <p style={styles.metaText}>

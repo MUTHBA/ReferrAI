@@ -42,10 +42,12 @@ class ConversionResponse(BaseModel):
 
 
 class ConversionWithScoreResponse(BaseModel):
-    """Conversion summary with its most recent AI quality score (AI-QUAL-004).
+    """Conversion summary with its most recent AI quality score (AI-QUAL-004/AI-XAI-003).
 
     quality_score is None when the background scoring task has not completed
     yet — the UI should display "Pending" in that case.
+    quality_explanation is the plain-language SHAP explanation string, or None
+    if explanation generation has not run yet.
     """
 
     id: uuid.UUID
@@ -53,3 +55,4 @@ class ConversionWithScoreResponse(BaseModel):
     attribution_model: str
     converted_at: datetime
     quality_score: Optional[float] = None
+    quality_explanation: Optional[str] = None

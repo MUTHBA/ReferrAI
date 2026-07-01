@@ -9,6 +9,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { getLatestScore } from '../../api/aiScores.js'
+import ScoreBadge from '../../components/ai/ScoreBadge.jsx'
 import {
   extractErrorMessage,
   getPartner,
@@ -49,6 +51,8 @@ export default function PartnerDetailPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [fraudScore, setFraudScore] = useState(null)
+  const [churnScore, setChurnScore] = useState(null)
 
   useEffect(() => {
     Promise.all([getPartner(partnerId), listTiers()])
@@ -62,6 +66,14 @@ export default function PartnerDetailPage() {
           phone: p.phone ?? '',
           status: p.status,
           tier_id: p.tier_id ?? '',
+        })
+        // Fetch AI scores in parallel — scores may not exist yet (null on 404)
+        Promise.all([
+          getLatestScore(p.id, 'fraud_risk'),
+          getLatestScore(p.id, 'churn_risk'),
+        ]).then(([fraud, churn]) => {
+          setFraudScore(fraud)
+          setChurnScore(churn)
         })
       })
       .catch((err) => setError(extractErrorMessage(err)))
@@ -114,12 +126,20 @@ export default function PartnerDetailPage() {
           <p style={styles.cardValue}>${Number(partner.total_revenue_contribution).toFixed(2)}</p>
         </div>
         <div style={styles.card}>
-          <p style={styles.cardLabel}>Quality Score</p>
-          <p style={styles.cardValue}>—</p>
+          <p style={styles.cardLabel}>Fraud Risk</p>
+          <ScoreBadge
+            score={fraudScore?.score ?? null}
+            label=""
+            explanation={fraudScore?.explanation ?? null}
+          />
         </div>
         <div style={styles.card}>
           <p style={styles.cardLabel}>Churn Risk</p>
-          <p style={styles.cardValue}>—</p>
+          <ScoreBadge
+            score={churnScore?.score ?? null}
+            label=""
+            explanation={churnScore?.explanation ?? null}
+          />
         </div>
       </div>
 

@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import admin as admin_routes
+from app.api.v1 import ai_scores as ai_scores_routes
 from app.api.v1.routes import auth as auth_routes
 from app.api.v1.routes import dashboard as dashboard_routes
 from app.api.v1.routes import partners as partner_routes
@@ -42,6 +43,7 @@ app.add_middleware(
 
 
 app.include_router(admin_routes.router, prefix="/api/v1")
+app.include_router(ai_scores_routes.router, prefix="/api/v1")
 app.include_router(auth_routes.router, prefix="/api/v1")
 app.include_router(settings_routes.router, prefix="/api/v1")
 app.include_router(referral_routes.router, prefix="/api/v1")
