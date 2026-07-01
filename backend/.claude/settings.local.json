@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Test-Path *)"
+      "Bash(Test-Path *)",
+      "Bash(python3 *)",
+      "Bash(pip show *)",
+      "Bash(pip list *)",
+      "Bash(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\vidyu\\\\ReferrAI\\\\backend\\\\scripts\" -Force)",
+      "Bash(Out-Null)",
+      "PowerShell(New-Item *)"
     ]
   }
 }
