@@ -21,6 +21,8 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.explainability.explainer import Explainer
+from app.ai.scoring.churn import FEATURE_NAMES as CHURN_FEATURE_NAMES
 from app.ai.scoring.churn import ChurnPredictor
 from app.ai.scoring.fraud import FraudDetector
 from app.ai.scoring.quality import ReferralQualityScorer
@@ -119,14 +121,19 @@ async def score_referral_quality(
         scorer = ReferralQualityScorer()
         score: float = scorer.predict(features)
 
-        # get_feature_importances() raises RuntimeError when the model file is
-        # absent (predict() returned the 50.0 fallback without loading the model).
-        # An inner guard ensures a missing model file still produces a score row.
-        importances: Optional[dict] = None
+        # SHAP explanation — wrapped in try/except so a missing model file or
+        # SHAP failure never blocks the score row from being written.
+        quality_top_factors: dict = {}
+        quality_explanation: Optional[str] = None
         try:
-            importances = scorer.get_feature_importances()
+            quality_top_factors = Explainer().explain_tree(
+                scorer._pipeline, features, ReferralQualityScorer.FEATURE_NAMES
+            )
+            quality_explanation = Explainer().to_plain_language(
+                "quality", quality_top_factors
+            )
         except Exception:
-            pass  # contributing_factors stays None; score row is still useful
+            pass  # contributing_factors stays {}; score row is still useful
 
         # --- Persist ---
         ai_score = AIScore(
@@ -135,8 +142,8 @@ async def score_referral_quality(
             entity_id=conversion_id,
             score_type="quality",
             score=Decimal(str(round(score, 2))),
-            contributing_factors=importances,
-            explanation=None,
+            contributing_factors=quality_top_factors or None,
+            explanation=quality_explanation,
             model_version="1.0",
             is_synthetic=False,
         )
@@ -253,7 +260,17 @@ async def score_fraud(db: AsyncSession, click_id: uuid.UUID) -> None:
         detector = FraudDetector()
         score: float = detector.predict(features)
 
-        # --- Persist ai_scores row ---
+        # Rule-based explanation only (no SHAP for IsolationForest).
+        fraud_explanation: Optional[str] = None
+        try:
+            fraud_explanation = Explainer().to_plain_language(
+                "fraud_risk", {"features": features}
+            )
+        except Exception:
+            pass
+
+        # --- Persist ai_scores rows ---
+        # Click-level row (entity_type='referral') — for per-click audit trail.
         ai_score = AIScore(
             id=uuid.uuid4(),
             entity_type="referral",
@@ -261,11 +278,26 @@ async def score_fraud(db: AsyncSession, click_id: uuid.UUID) -> None:
             score_type="fraud_risk",
             score=Decimal(str(round(score, 2))),
             contributing_factors={"features": features},
-            explanation=None,
+            explanation=fraud_explanation,
             model_version="1.0",
             is_synthetic=False,
         )
         db.add(ai_score)
+
+        # Partner-level row (entity_type='partner') — lets admin pages query
+        # the latest fraud risk for a partner without joining through clicks.
+        partner_ai_score = AIScore(
+            id=uuid.uuid4(),
+            entity_type="partner",
+            entity_id=partner_id,
+            score_type="fraud_risk",
+            score=Decimal(str(round(score, 2))),
+            contributing_factors={"features": features},
+            explanation=fraud_explanation,
+            model_version="1.0",
+            is_synthetic=False,
+        )
+        db.add(partner_ai_score)
 
         # --- Optionally create a fraud_flags row ---
         # Read the alert threshold from settings (default 70). SettingService
@@ -405,9 +437,16 @@ async def score_churn(db: AsyncSession, partner_id: uuid.UUID) -> None:
         predictor = ChurnPredictor()
         score: float = predictor.predict(features)
 
-        importances: Optional[dict] = None
+        # SHAP explanation for GradientBoosting churn model.
+        churn_top_factors: dict = {}
+        churn_explanation: Optional[str] = None
         try:
-            importances = predictor.get_feature_importances()
+            churn_top_factors = Explainer().explain_tree(
+                predictor._pipeline, features, CHURN_FEATURE_NAMES
+            )
+            churn_explanation = Explainer().to_plain_language(
+                "churn_risk", churn_top_factors
+            )
         except Exception:
             pass  # missing model file still produces a score row
 
@@ -418,8 +457,8 @@ async def score_churn(db: AsyncSession, partner_id: uuid.UUID) -> None:
             entity_id=partner_id,
             score_type="churn_risk",
             score=Decimal(str(round(score, 2))),
-            contributing_factors=importances,
-            explanation=None,
+            contributing_factors=churn_top_factors or None,
+            explanation=churn_explanation,
             model_version="1.0",
             is_synthetic=False,
         )

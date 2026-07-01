@@ -61,20 +61,30 @@ async def list_my_conversions(
     if partner is None:
         return []
 
-    # Correlated scalar subquery: most recent quality score for each conversion.
-    latest_quality = (
-        select(AIScore.score)
-        .where(AIScore.entity_id == ReferralConversion.id)
-        .where(AIScore.entity_type == "referral")
-        .where(AIScore.score_type == "quality")
-        .order_by(AIScore.calculated_at.desc())
-        .limit(1)
-        .correlate(ReferralConversion)
-        .scalar_subquery()
-    )
+    # Two correlated scalar subqueries — both target the most recent quality
+    # ai_scores row per conversion. Separate subqueries are needed because
+    # SQLAlchemy scalar_subquery() can only SELECT one column at a time.
+    def _quality_subquery(column):
+        return (
+            select(column)
+            .where(AIScore.entity_id == ReferralConversion.id)
+            .where(AIScore.entity_type == "referral")
+            .where(AIScore.score_type == "quality")
+            .order_by(AIScore.calculated_at.desc())
+            .limit(1)
+            .correlate(ReferralConversion)
+            .scalar_subquery()
+        )
+
+    latest_quality = _quality_subquery(AIScore.score)
+    latest_explanation = _quality_subquery(AIScore.explanation)
 
     stmt = (
-        select(ReferralConversion, latest_quality.label("quality_score"))
+        select(
+            ReferralConversion,
+            latest_quality.label("quality_score"),
+            latest_explanation.label("quality_explanation"),
+        )
         .where(ReferralConversion.partner_id == partner.id)
         .where(ReferralConversion.is_synthetic == False)  # noqa: E712
         .order_by(ReferralConversion.converted_at.desc())
@@ -88,8 +98,9 @@ async def list_my_conversions(
             attribution_model=conv.attribution_model,
             converted_at=conv.converted_at,
             quality_score=float(score) if score is not None else None,
+            quality_explanation=explanation,
         )
-        for conv, score in rows
+        for conv, score, explanation in rows
     ]
 
 
