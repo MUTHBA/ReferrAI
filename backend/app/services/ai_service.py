@@ -1,10 +1,12 @@
 # -----------------------------------------------------------------------------
 # backend/app/services/ai_service.py
 #
-# AI scoring background tasks (AI-QUAL-002, AI-FRD-003). Functions here are
-# designed to be registered with FastAPI's BackgroundTasks and therefore must
-# never raise — any exception is caught, logged, and swallowed so a scoring
-# failure cannot affect the HTTP response or the caller's transaction.
+# AI scoring background tasks (AI-QUAL-002, AI-FRD-003, AI-CHURN-002,
+# AI-RANK-001). Functions are designed to be called from BackgroundTasks or
+# admin batch endpoints and must never raise — any exception is caught, logged,
+# and swallowed so a scoring failure cannot affect the HTTP response.
+# Added score_ranking() for AI-RANK-001: composite partner ranking using
+# quality, inverted churn risk, normalised volume, and normalised revenue.
 #
 # Session ownership: the AsyncSession is passed in from the request scope.
 # FastAPI runs background tasks before dependency cleanup, so the session
@@ -470,4 +472,120 @@ async def score_churn(db: AsyncSession, partner_id: uuid.UUID) -> None:
     except Exception:
         logger.exception(
             "score_churn failed for partner %s — no score stored", partner_id
+        )
+
+
+async def score_ranking(db: AsyncSession, partner_id: uuid.UUID) -> None:
+    """Compute and persist a composite ranking score for the given partner (AI-RANK-001).
+
+    Combines quality score, inverted churn risk, normalised referral volume, and
+    normalised revenue contribution using weights from the 'ranking.weights' setting
+    (default: quality=0.4, churn=0.2, volume=0.2, revenue=0.2).
+
+    Normalisation divides each partner's raw counter by the maximum observed across
+    all active non-synthetic partners so the output is always 0–100.
+
+    All exceptions are caught and logged — this function never raises.
+
+    Args:
+        db:         SQLAlchemy async session.
+        partner_id: PK of the Partner row to score.
+    """
+    try:
+        # 1. Load partner (non-synthetic only)
+        partner = await db.scalar(
+            select(Partner)
+            .where(Partner.id == partner_id)
+            .where(Partner.is_synthetic == False)  # noqa: E712
+        )
+        if partner is None:
+            logger.warning("score_ranking: partner %s not found or synthetic — skipping", partner_id)
+            return
+
+        # 2. Load ranking weights from settings
+        weights = await SettingService(db).get(
+            "ranking.weights",
+            {"quality": 0.4, "churn": 0.2, "volume": 0.2, "revenue": 0.2},
+        )
+        if not isinstance(weights, dict):
+            weights = {"quality": 0.4, "churn": 0.2, "volume": 0.2, "revenue": 0.2}
+
+        # 3. Latest quality score for this partner (default 50 when not yet scored)
+        quality_raw = await db.scalar(
+            select(AIScore.score)
+            .where(AIScore.entity_id == partner_id)
+            .where(AIScore.score_type == "quality")
+            .where(AIScore.is_synthetic == False)  # noqa: E712
+            .order_by(AIScore.calculated_at.desc())
+            .limit(1)
+        )
+        quality_score = float(quality_raw) if quality_raw is not None else 50.0
+
+        # 4. Latest churn_risk score, inverted so higher = better (default 50)
+        churn_raw = await db.scalar(
+            select(AIScore.score)
+            .where(AIScore.entity_id == partner_id)
+            .where(AIScore.score_type == "churn_risk")
+            .where(AIScore.is_synthetic == False)  # noqa: E712
+            .order_by(AIScore.calculated_at.desc())
+            .limit(1)
+        )
+        churn_score = 100.0 - float(churn_raw) if churn_raw is not None else 50.0
+
+        # 5. Normalise volume and revenue against all active non-synthetic partners
+        max_row = (await db.execute(
+            select(
+                func.max(Partner.total_referral_count),
+                func.max(Partner.total_revenue_contribution),
+            )
+            .where(Partner.status == "active")
+            .where(Partner.is_synthetic == False)  # noqa: E712
+        )).one()
+        max_vol = float(max_row[0] or 1)
+        max_rev = float(max_row[1] or 1)
+
+        volume_score = min(100.0, float(partner.total_referral_count) / max_vol * 100.0)
+        revenue_score = min(100.0, float(partner.total_revenue_contribution) / max_rev * 100.0)
+
+        # 6. Weighted composite (weights sum to 1.0 by convention)
+        composite = (
+            quality_score * float(weights.get("quality", 0.4))
+            + churn_score * float(weights.get("churn", 0.2))
+            + volume_score * float(weights.get("volume", 0.2))
+            + revenue_score * float(weights.get("revenue", 0.2))
+        )
+
+        contributing_factors = {
+            "quality_score": round(quality_score, 2),
+            "churn_inverted": round(churn_score, 2),
+            "volume_score": round(volume_score, 2),
+            "revenue_score": round(revenue_score, 2),
+        }
+        explanation = (
+            f"Composite ranking: quality {quality_score:.0f}, "
+            f"churn resistance {churn_score:.0f}, "
+            f"volume {volume_score:.0f}, "
+            f"revenue {revenue_score:.0f}."
+        )
+
+        # 7. Persist
+        ai_score = AIScore(
+            id=uuid.uuid4(),
+            entity_type="partner",
+            entity_id=partner_id,
+            score_type="ranking",
+            score=Decimal(str(round(composite, 2))),
+            contributing_factors=contributing_factors,
+            explanation=explanation,
+            model_version="1.0",
+            is_synthetic=False,
+        )
+        db.add(ai_score)
+        await db.commit()
+
+        logger.info("Ranking score %.2f stored for partner %s", composite, partner_id)
+
+    except Exception:
+        logger.exception(
+            "score_ranking failed for partner %s — no score stored", partner_id
         )

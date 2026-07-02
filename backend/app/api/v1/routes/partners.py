@@ -6,11 +6,14 @@
 # Partner-only routes: view own profile, update own profile (name/contact
 # fields only — no status or tier changes). Mounted in main.py with
 # prefix="/api/v1".
+# Added AI-RANK-002: GET /partners?sort=rank returns partners sorted by latest
+# composite ranking score. rank_score field populated on each PartnerResponse.
 # -----------------------------------------------------------------------------
 
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -41,10 +44,18 @@ router = APIRouter(tags=["partners"])
 
 @router.get("/partners", response_model=list[PartnerResponse])
 async def list_partners(
+    sort: Optional[str] = Query(default=None, description="Sort order. Use 'rank' to sort by composite ranking score."),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[PartnerResponse]:
-    partners = await PartnerService(db).list_partners()
+    service = PartnerService(db)
+    if sort == "rank":
+        pairs = await service.list_partners_ranked()
+        return [
+            PartnerResponse.model_validate(p).model_copy(update={"rank_score": score})
+            for p, score in pairs
+        ]
+    partners = await service.list_partners()
     return [PartnerResponse.model_validate(p) for p in partners]
 
 

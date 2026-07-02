@@ -7,12 +7,19 @@
 // carries their user_id, not their partner_id, so "my own profile" must go
 // through /me/partner rather than getPartner(id). listTiers() is admin-only
 // and backs the tier selector in the partner detail form.
+// Added listPartners({ sort }) for AI-RANK-002 and runRanking() for AI-RANK-001.
 // -----------------------------------------------------------------------------
 
 import axiosInstance from './axiosInstance.js'
 
-export async function listPartners() {
-  const { data } = await axiosInstance.get('/partners')
+export async function listPartners({ sort } = {}) {
+  const params = sort ? { sort } : {}
+  const { data } = await axiosInstance.get('/partners', { params })
+  return data
+}
+
+export async function runRanking() {
+  const { data } = await axiosInstance.post('/admin/run-ranking')
   return data
 }
 

@@ -6,6 +6,8 @@
 # counts for the volume chart. AdminKPIs and PartnerKPIs are the top-level
 # stat cards. Scores are Optional[Decimal] — null until Phase 4 AI models
 # are trained and scoring runs have been executed.
+# Added rank_position and total_ranked_partners for AI-RANK-003 — populated
+# after run-ranking has been executed; null until then.
 # -----------------------------------------------------------------------------
 
 from datetime import date
@@ -48,3 +50,5 @@ class PartnerDashboardResponse(BaseModel):
     quality_score: Optional[Decimal] = None
     churn_score: Optional[Decimal] = None
     rank_score: Optional[Decimal] = None
+    rank_position: Optional[int] = None
+    total_ranked_partners: Optional[int] = None

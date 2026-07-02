@@ -7,6 +7,8 @@
 # AI score fields (quality, churn, rank) return None until Phase 4 scoring
 # runs have been executed. CSV helpers return plain dicts for easy csv.DictWriter
 # consumption — no ORM model serialisation needed there.
+# Added rank_position + total_ranked_partners for AI-RANK-003: computes the
+# partner's position in the latest ranking run so the UI can show "#X of Y".
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -166,6 +168,42 @@ class DashboardService:
         churn_score = await self._latest_score(partner.id, "churn_risk")
         rank_score = await self._latest_score(partner.id, "ranking")
 
+        # Compute rank position: "#X of Y ranked partners" (AI-RANK-003)
+        rank_position: Optional[int] = None
+        total_ranked_partners: Optional[int] = None
+        if rank_score is not None:
+            # Subquery: latest ranking timestamp per partner
+            latest_ts_subq = (
+                select(
+                    AIScore.entity_id,
+                    func.max(AIScore.calculated_at).label("max_at"),
+                )
+                .where(AIScore.score_type == "ranking")
+                .where(AIScore.is_synthetic.is_(False))
+                .group_by(AIScore.entity_id)
+                .subquery("latest_rank_ts")
+            )
+            # Join back to get the score at that timestamp
+            latest_rank_subq = (
+                select(AIScore.entity_id, AIScore.score.label("ranking_score"))
+                .join(
+                    latest_ts_subq,
+                    (AIScore.entity_id == latest_ts_subq.c.entity_id)
+                    & (AIScore.calculated_at == latest_ts_subq.c.max_at),
+                )
+                .where(AIScore.score_type == "ranking")
+                .subquery("latest_rank")
+            )
+            total_ranked_partners = await self.session.scalar(
+                select(func.count()).select_from(latest_rank_subq)
+            ) or 0
+            above_count = await self.session.scalar(
+                select(func.count())
+                .select_from(latest_rank_subq)
+                .where(latest_rank_subq.c.ranking_score > rank_score)
+            ) or 0
+            rank_position = above_count + 1
+
         return PartnerDashboardResponse(
             kpis=PartnerKPIs(
                 referral_count=link_count + code_count,
@@ -176,6 +214,8 @@ class DashboardService:
             quality_score=quality_score,
             churn_score=churn_score,
             rank_score=rank_score,
+            rank_position=rank_position,
+            total_ranked_partners=total_ranked_partners,
         )
 
     async def _latest_score(
