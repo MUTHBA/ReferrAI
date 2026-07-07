@@ -7,6 +7,10 @@
 # and swallowed so a scoring failure cannot affect the HTTP response.
 # Added score_ranking() for AI-RANK-001: composite partner ranking using
 # quality, inverted churn risk, normalised volume, and normalised revenue.
+# score_fraud() updated for AI-FRD-001: FraudRuleEngine deterministic rules are
+# run alongside the Isolation Forest model; the composite score is
+# min(100, ml_score + len(triggered_rules) * 30). triggered_rules are stored
+# in contributing_factors and included in the explanation text.
 #
 # Session ownership: the AsyncSession is passed in from the request scope.
 # FastAPI runs background tasks before dependency cleanup, so the session
@@ -27,6 +31,7 @@ from app.ai.explainability.explainer import Explainer
 from app.ai.scoring.churn import FEATURE_NAMES as CHURN_FEATURE_NAMES
 from app.ai.scoring.churn import ChurnPredictor
 from app.ai.scoring.fraud import FraudDetector
+from app.ai.scoring.fraud_rules import FraudRuleEngine
 from app.ai.scoring.quality import ReferralQualityScorer
 from app.models.ai_score import AIScore
 from app.models.fraud_flag import FraudFlag
@@ -258,18 +263,42 @@ async def score_fraud(db: AsyncSession, click_id: uuid.UUID) -> None:
             "time_between_clicks_seconds": time_between_clicks_seconds,
         }
 
-        # --- Score ---
+        # --- ML score (Isolation Forest) ---
         detector = FraudDetector()
-        score: float = detector.predict(features)
+        ml_score: float = detector.predict(features)
 
-        # Rule-based explanation only (no SHAP for IsolationForest).
+        # --- Deterministic rule checks (AI-FRD-001) ---
+        # FraudRuleEngine.check() never raises; returns [] on any failure.
+        triggered_rules: list[str] = await FraudRuleEngine(db).check(click_id)
+
+        # --- Composite score ---
+        # Rules provide an additive boost of 30 points each (capped at 100) so
+        # that a deterministic rule violation alone can reach the alert threshold
+        # when combined with a modest ML score, while the ML score still has
+        # influence when no rules fire.
+        rule_boost = len(triggered_rules) * 30.0
+        score: float = min(100.0, ml_score + rule_boost)
+
+        # --- Explanation ---
+        # Include triggered rule names in the explanation when present; fall back
+        # to the generic Explainer summary when no rules fired.
         fraud_explanation: Optional[str] = None
-        try:
-            fraud_explanation = Explainer().to_plain_language(
-                "fraud_risk", {"features": features}
-            )
-        except Exception:
-            pass
+        if triggered_rules:
+            rules_str = ", ".join(triggered_rules)
+            fraud_explanation = f"Fraud risk flagged due to rules: {rules_str}."
+        else:
+            try:
+                fraud_explanation = Explainer().to_plain_language(
+                    "fraud_risk", {"features": features}
+                )
+            except Exception:
+                pass
+
+        contributing_factors = {
+            "features": features,
+            "triggered_rules": triggered_rules,
+            "ml_score": round(ml_score, 2),
+        }
 
         # --- Persist ai_scores rows ---
         # Click-level row (entity_type='referral') — for per-click audit trail.
@@ -279,7 +308,7 @@ async def score_fraud(db: AsyncSession, click_id: uuid.UUID) -> None:
             entity_id=click_id,
             score_type="fraud_risk",
             score=Decimal(str(round(score, 2))),
-            contributing_factors={"features": features},
+            contributing_factors=contributing_factors,
             explanation=fraud_explanation,
             model_version="1.0",
             is_synthetic=False,
@@ -294,7 +323,7 @@ async def score_fraud(db: AsyncSession, click_id: uuid.UUID) -> None:
             entity_id=partner_id,
             score_type="fraud_risk",
             score=Decimal(str(round(score, 2))),
-            contributing_factors={"features": features},
+            contributing_factors=contributing_factors,
             explanation=fraud_explanation,
             model_version="1.0",
             is_synthetic=False,
