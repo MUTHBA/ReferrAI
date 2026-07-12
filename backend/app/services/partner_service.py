@@ -11,6 +11,8 @@
 # evaluate_tier_upgrade() is called after a commission is earned — it only
 # upgrades, never downgrades, and assigns the highest qualifying tier by
 # rank_order descending.
+# Added list_partners_ranked() for AI-RANK-002: returns all partners sorted
+# by their latest 'ranking' ai_score, with the score value for display.
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -19,6 +21,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.ai_score import AIScore
 from app.models.partner import Partner, PartnerTier
 from app.repositories.partner_repository import PartnerRepository
 from app.schemas.partner import AdminPartnerUpdateRequest, PartnerSelfUpdateRequest
@@ -73,6 +76,33 @@ class PartnerService:
             select(Partner).order_by(Partner.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def list_partners_ranked(self) -> list[tuple[Partner, Optional[float]]]:
+        """Return all partners sorted by latest ranking score descending (AI-RANK-002).
+
+        Partners without a ranking score sort last (nullslast). The rank score is
+        returned alongside each Partner so the route can populate PartnerResponse.rank_score
+        without an additional per-partner query.
+        """
+        rank_subq = (
+            select(AIScore.score)
+            .where(AIScore.entity_id == Partner.id)
+            .where(AIScore.entity_type == "partner")
+            .where(AIScore.score_type == "ranking")
+            .where(AIScore.is_synthetic == False)  # noqa: E712
+            .order_by(AIScore.calculated_at.desc())
+            .limit(1)
+            .correlate(Partner)
+            .scalar_subquery()
+        )
+        result = await self.session.execute(
+            select(Partner, rank_subq.label("rank_score"))
+            .order_by(rank_subq.desc().nullslast())
+        )
+        return [
+            (row.Partner, float(row.rank_score) if row.rank_score is not None else None)
+            for row in result
+        ]
 
     async def update_partner_as_admin(
         self, partner_id: uuid.UUID, data: AdminPartnerUpdateRequest

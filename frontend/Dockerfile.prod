@@ -1,0 +1,43 @@
+# -----------------------------------------------------------------------------
+# frontend/Dockerfile.prod
+#
+# Multi-stage production image for the React frontend (DEMO-002).
+#
+# Stage 1 (builder): installs npm dependencies and runs `npm run build` to
+# produce an optimised static bundle in /app/dist. Uses `npm ci` (not
+# `npm install`) so the exact lock-file versions are used.
+#
+# Stage 2 (runtime): copies only the built dist/ folder into an nginx:alpine
+# image. The production nginx config (nginx.prod.conf) is also copied in so
+# the container is fully self-contained — no bind-mounts needed.
+#
+# The resulting image is ~25 MB (nginx:alpine base) rather than 300+ MB for
+# the Node.js image. API calls to /api/* are proxied to the FastAPI backend
+# by nginx; all other routes return index.html for React Router (SPA fallback).
+# -----------------------------------------------------------------------------
+
+# ── Stage 1: build ───────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install dependencies first for layer caching (re-runs only when lock file changes)
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source and build
+COPY . .
+RUN npm run build
+
+# ── Stage 2: serve ───────────────────────────────────────────────────────────
+FROM nginx:1.27-alpine
+
+# Copy the production nginx config
+COPY nginx.prod.conf /etc/nginx/nginx.conf
+
+# Copy the React build output from the builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

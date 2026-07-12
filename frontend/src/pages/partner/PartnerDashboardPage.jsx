@@ -5,8 +5,9 @@
 // count, total earnings, wallet balance) and AI score cards for quality,
 // churn risk, and rank. Score cards display "Pending" until Phase 4 scoring
 // runs are executed — the API returns null for these fields until then.
-// This is the first page a partner sees after login (redirected from
-// RegisterPage/LoginPage on successful auth).
+// Added AI-RANK-003: rank_position and total_ranked_partners fields shown as
+// "#X of Y partners" banner when ranking has been run.
+// This is the first page a partner sees after login.
 // -----------------------------------------------------------------------------
 
 import { useEffect, useState } from 'react'
@@ -80,11 +81,27 @@ export default function PartnerDashboardPage() {
   if (loading) return <p>Loading…</p>
   if (error) return <p style={{ color: '#b91c1c' }}>{error}</p>
 
-  const { kpis, quality_score, churn_score, rank_score } = data
+  const { kpis, quality_score, churn_score, rank_score, rank_position, total_ranked_partners } = data
 
   return (
     <section>
       <h1>Partner Dashboard</h1>
+
+      {rank_position !== null && rank_position !== undefined && (
+        <div style={{
+          marginBottom: '20px',
+          padding: '10px 18px',
+          borderRadius: '8px',
+          backgroundColor: '#eff6ff',
+          border: '1px solid #bfdbfe',
+          display: 'inline-block',
+          fontSize: '15px',
+          fontWeight: 600,
+          color: '#1d4ed8',
+        }}>
+          #{rank_position} of {total_ranked_partners} ranked partners
+        </div>
+      )}
 
       <div style={styles.kpiGrid}>
         <div style={styles.card}>

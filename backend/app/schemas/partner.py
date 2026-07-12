@@ -7,6 +7,8 @@
 # different fields per role: admins can change status/tier, partners can
 # only update name/contact. TierResponse/TierCreateRequest/TierUpdateRequest
 # cover the admin-only tier CRUD (PRT-002).
+# Added rank_score: Optional[float] for AI-RANK-002 — populated only in the
+# ranked partner list (GET /partners?sort=rank); null for all other fetches.
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -61,6 +63,8 @@ class PartnerResponse(BaseModel):
     total_referral_count: int
     total_revenue_contribution: Decimal
     created_at: datetime
+    # Populated only when listing with sort=rank (AI-RANK-002); null otherwise.
+    rank_score: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
