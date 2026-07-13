@@ -10,7 +10,9 @@
 import axiosInstance from './axiosInstance.js'
 
 export async function listFraudFlags(flagStatus) {
-  const params = flagStatus ? { status: flagStatus } : {}
+  // Always pass ?status= so the route default (pending_review) never fires
+  // unexpectedly. Pass "all" to disable server-side filtering.
+  const params = { status: flagStatus ?? 'all' }
   const { data } = await axiosInstance.get('/fraud-flags', { params })
   return data
 }
