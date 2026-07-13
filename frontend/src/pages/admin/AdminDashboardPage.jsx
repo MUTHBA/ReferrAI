@@ -7,6 +7,9 @@
 // export buttons for referrals, commissions, and partners. The volume chart
 // fills in zero-data days automatically from the API response, so the line
 // is always continuous across the full date window.
+// AI-CHURN-004: wired real churn_alert_count from KPIs (was hardcoded 0),
+// removed "Phase 4 pending" sub-text, and added Churn At-Risk Partners table
+// showing partners whose latest churn_risk score exceeds the configured threshold.
 // -----------------------------------------------------------------------------
 
 import { useEffect, useState } from 'react'
@@ -46,6 +49,18 @@ const styles = {
     backgroundColor: n > 0 ? '#fee2e2' : '#f3f4f6',
     color: n > 0 ? '#b91c1c' : '#374151',
     fontWeight: 700, fontSize: '28px',
+  }),
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
+  th: {
+    textAlign: 'left', padding: '10px 12px',
+    borderBottom: '2px solid #e5e7eb', color: '#374151', fontWeight: 600,
+  },
+  td: { padding: '10px 12px', borderBottom: '1px solid #f3f4f6' },
+  churnScore: (score) => ({
+    display: 'inline-block', minWidth: '44px', textAlign: 'center',
+    padding: '2px 8px', borderRadius: '99px', fontSize: '12px', fontWeight: 700,
+    backgroundColor: score >= 90 ? '#fee2e2' : score >= 70 ? '#fef9c3' : '#f3f4f6',
+    color: score >= 90 ? '#b91c1c' : score >= 70 ? '#854d0e' : '#374151',
   }),
 }
 
@@ -127,7 +142,7 @@ export default function AdminDashboardPage() {
   if (loading) return <p>Loading…</p>
   if (error) return <p style={{ color: '#b91c1c' }}>{error}</p>
 
-  const { kpis, volume_chart } = data
+  const { kpis, volume_chart, churn_at_risk_partners = [] } = data
 
   return (
     <section>
@@ -157,8 +172,7 @@ export default function AdminDashboardPage() {
         </div>
         <div style={styles.card}>
           <p style={styles.cardLabel}>Churn Alerts</p>
-          <p style={styles.cardValue}>{kpis.churn_alert_count}</p>
-          <p style={styles.cardSub}>Phase 4 pending</p>
+          <p style={styles.alert(kpis.churn_alert_count)}>{kpis.churn_alert_count}</p>
         </div>
       </div>
 
@@ -166,6 +180,32 @@ export default function AdminDashboardPage() {
         <h2 style={styles.sectionTitle}>Referral Volume (last 30 days)</h2>
         <VolumeChart data={volume_chart} />
       </div>
+
+      {churn_at_risk_partners.length > 0 && (
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Churn At-Risk Partners</h2>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Partner</th>
+                <th style={styles.th}>Churn Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {churn_at_risk_partners.map((p) => (
+                <tr key={p.partner_id}>
+                  <td style={styles.td}>{p.name}</td>
+                  <td style={styles.td}>
+                    <span style={styles.churnScore(p.churn_score)}>
+                      {p.churn_score.toFixed(1)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Export Data</h2>

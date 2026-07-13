@@ -8,6 +8,8 @@
 # prefix="/api/v1".
 # Added AI-RANK-002: GET /partners?sort=rank returns partners sorted by latest
 # composite ranking score. rank_score field populated on each PartnerResponse.
+# AI-CHURN-004: churn_score is now populated on every list response (all sort
+# modes) via get_latest_score_by_partner("churn_risk") — one batch query.
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -49,14 +51,22 @@ async def list_partners(
     db: AsyncSession = Depends(get_db),
 ) -> list[PartnerResponse]:
     service = PartnerService(db)
+
     if sort == "rank":
         pairs = await service.list_partners_ranked()
-        return [
+        base_list = [
             PartnerResponse.model_validate(p).model_copy(update={"rank_score": score})
             for p, score in pairs
         ]
-    partners = await service.list_partners()
-    return [PartnerResponse.model_validate(p) for p in partners]
+    else:
+        partners = await service.list_partners()
+        base_list = [PartnerResponse.model_validate(p) for p in partners]
+
+    churn_scores = await service.get_latest_score_by_partner("churn_risk")
+    return [
+        p.model_copy(update={"churn_score": churn_scores.get(p.id)})
+        for p in base_list
+    ]
 
 
 @router.get("/partners/{partner_id}", response_model=PartnerResponse)

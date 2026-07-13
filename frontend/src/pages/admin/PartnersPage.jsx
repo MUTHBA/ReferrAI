@@ -7,6 +7,8 @@
 // are colour-coded: active=green, suspended=red, pending=yellow.
 // Added AI-RANK-002/003: "Sort by Rank" toggle and "Run Ranking" button that
 // calls POST /admin/run-ranking; rank column shows composite score 0–100.
+// AI-CHURN-004: added Churn Risk column populated from partner.churn_score;
+// high score (>=70) = red badge (at-risk), medium (>=40) = yellow, null = grey.
 // -----------------------------------------------------------------------------
 
 import { useEffect, useState } from 'react'
@@ -57,6 +59,17 @@ const styles = {
     fontWeight: 700,
     backgroundColor: score === null ? '#f3f4f6' : score >= 70 ? '#dcfce7' : score >= 40 ? '#fef9c3' : '#fee2e2',
     color: score === null ? '#9ca3af' : score >= 70 ? '#15803d' : score >= 40 ? '#854d0e' : '#b91c1c',
+  }),
+  churnBadge: (score) => ({
+    display: 'inline-block',
+    minWidth: '44px',
+    textAlign: 'center',
+    padding: '2px 8px',
+    borderRadius: '99px',
+    fontSize: '12px',
+    fontWeight: 700,
+    backgroundColor: score === null || score === undefined ? '#f3f4f6' : score >= 70 ? '#fee2e2' : score >= 40 ? '#fef9c3' : '#dcfce7',
+    color: score === null || score === undefined ? '#9ca3af' : score >= 70 ? '#b91c1c' : score >= 40 ? '#854d0e' : '#15803d',
   }),
 }
 
@@ -126,6 +139,7 @@ export default function PartnersPage() {
               <th style={styles.th}>Referrals</th>
               <th style={styles.th}>Revenue</th>
               <th style={styles.th}>Rank Score</th>
+              <th style={styles.th}>Churn Risk</th>
               <th style={styles.th}>Joined</th>
             </tr>
           </thead>
@@ -147,6 +161,13 @@ export default function PartnersPage() {
                   <span style={styles.rankBadge(p.rank_score)}>
                     {p.rank_score !== null && p.rank_score !== undefined
                       ? Number(p.rank_score).toFixed(1)
+                      : '—'}
+                  </span>
+                </td>
+                <td style={styles.td}>
+                  <span style={styles.churnBadge(p.churn_score)}>
+                    {p.churn_score !== null && p.churn_score !== undefined
+                      ? Number(p.churn_score).toFixed(1)
                       : '—'}
                   </span>
                 </td>
