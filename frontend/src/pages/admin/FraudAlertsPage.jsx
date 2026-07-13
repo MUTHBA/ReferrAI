@@ -76,7 +76,7 @@ const styles = {
 }
 
 const FILTERS = [
-  { label: 'All', value: null },
+  { label: 'All', value: 'all' },
   { label: 'Pending', value: 'pending_review' },
   { label: 'Confirmed', value: 'confirmed' },
   { label: 'Dismissed', value: 'dismissed' },
