@@ -1,3 +1,4 @@
+# Alembic migration — seeds partner_tiers and default settings rows.
 """seed default tier and canonical settings
 
 Revision ID: a608528f6443
