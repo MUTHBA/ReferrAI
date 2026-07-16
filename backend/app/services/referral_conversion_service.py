@@ -48,6 +48,22 @@ class ConversionPartnerNotFoundError(Exception):
         self.partner_id = partner_id
 
 
+class DuplicateConversionError(Exception):
+    """Raised when a conversion with the same partner_id + external_reference already exists.
+
+    The caller should return HTTP 409 — do not recalculate commission or
+    re-credit the wallet.
+    """
+
+    def __init__(self, partner_id: uuid.UUID, external_reference: str) -> None:
+        super().__init__(
+            f"Conversion for partner {partner_id} with reference "
+            f"'{external_reference}' already exists"
+        )
+        self.partner_id = partner_id
+        self.external_reference = external_reference
+
+
 class ReferralConversionService:
     """Records a referral conversion and triggers downstream commission calculation."""
 
@@ -64,6 +80,13 @@ class ReferralConversionService:
         All writes are flushed individually but committed together so the
         transaction is all-or-nothing.
         """
+        # 0. Idempotency check — reject duplicates before touching anything else.
+        existing = await ReferralConversionRepository(self.session).get_by_partner_and_reference(
+            data.partner_id, data.external_reference
+        )
+        if existing is not None:
+            raise DuplicateConversionError(data.partner_id, data.external_reference)
+
         # 1. Resolve referral_code string → ReferralCode UUID if provided.
         referral_code_id: uuid.UUID | None = None
         if data.referral_code:
@@ -90,6 +113,7 @@ class ReferralConversionService:
         conversion = ReferralConversion(
             id=uuid.uuid4(),
             partner_id=data.partner_id,
+            external_reference=data.external_reference,
             click_id=attributed_click.id if attributed_click else None,
             referral_link_id=attributed_click.referral_link_id if attributed_click else None,
             referral_code_id=referral_code_id,

@@ -23,6 +23,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -142,6 +143,12 @@ class ReferralConversion(Base):
             "attribution_model IN ('first_click', 'last_click')",
             name="ck_referral_conversions_attribution_model",
         ),
+        # Idempotency: one conversion per merchant order per partner.
+        # Prevents double commission if the same webhook fires twice.
+        UniqueConstraint(
+            "partner_id", "external_reference",
+            name="uq_referral_conversions_partner_external_ref",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -161,6 +168,9 @@ class ReferralConversion(Base):
     )
     referral_code_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("referral_codes.id"), nullable=True
+    )
+    external_reference: Mapped[str] = mapped_column(
+        String(255), nullable=False, index=True
     )
     conversion_value: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),

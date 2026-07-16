@@ -20,6 +20,7 @@ class ConversionCreate(BaseModel):
     """Payload for recording a new referral conversion."""
 
     partner_id: uuid.UUID
+    external_reference: str
     referral_code: Optional[str] = None
     click_id: Optional[uuid.UUID] = None
     conversion_value: Decimal
@@ -32,6 +33,7 @@ class ConversionResponse(BaseModel):
 
     id: uuid.UUID
     partner_id: uuid.UUID
+    external_reference: str
     click_id: Optional[uuid.UUID]
     referral_link_id: Optional[uuid.UUID]
     referral_code_id: Optional[uuid.UUID]

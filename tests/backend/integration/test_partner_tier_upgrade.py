@@ -55,10 +55,17 @@ async def test_tier_upgrades_after_crossing_threshold(
         ))
         await session.commit()
 
+    _conv_counter = {"n": 0}
+
     async def record_conversion() -> None:
+        _conv_counter["n"] += 1
         resp = await client.post(
             "/api/v1/referrals/conversions",
-            json={"partner_id": str(seed["partner_id"]), "conversion_value": "100.00"},
+            json={
+                "partner_id": str(seed["partner_id"]),
+                "external_reference": f"tier-test-{_conv_counter['n']}",
+                "conversion_value": "100.00",
+            },
             headers=seed["admin_headers"],
         )
         assert resp.status_code == 201, resp.text

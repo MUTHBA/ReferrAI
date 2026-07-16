@@ -40,11 +40,19 @@ async def _partner_headers(client: AsyncClient) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+_wallet_credit_counter = {"n": 0}
+
+
 async def _credit_wallet(client: AsyncClient, seed: dict, amount: str = "200.00") -> None:
     """Record a conversion so the partner's wallet has funds available."""
+    _wallet_credit_counter["n"] += 1
     resp = await client.post(
         "/api/v1/referrals/conversions",
-        json={"partner_id": str(seed["partner_id"]), "conversion_value": amount},
+        json={
+            "partner_id": str(seed["partner_id"]),
+            "external_reference": f"wallet-test-{_wallet_credit_counter['n']}",
+            "conversion_value": amount,
+        },
         headers=seed["admin_headers"],
     )
     assert resp.status_code == 201, f"Conversion failed: {resp.text}"

@@ -39,6 +39,7 @@ async def test_conversion_creates_commission_with_correct_amount(
         "/api/v1/referrals/conversions",
         json={
             "partner_id": str(seed["partner_id"]),
+            "external_reference": "comm-test-001",
             "conversion_value": str(conversion_value),
         },
         headers=seed["admin_headers"],
@@ -72,6 +73,7 @@ async def test_conversion_credits_wallet_balance(
         "/api/v1/referrals/conversions",
         json={
             "partner_id": str(seed["partner_id"]),
+            "external_reference": "comm-test-002",
             "conversion_value": "100.00",
         },
         headers=seed["admin_headers"],

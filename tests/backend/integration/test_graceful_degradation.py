@@ -35,6 +35,7 @@ async def test_conversion_succeeds_when_ai_fails(
     """A conversion records as 201 even when the quality scorer raises."""
     payload = {
         "partner_id": str(seed["partner_id"]),
+        "external_reference": "degrade-test-001",
         "conversion_value": "100.00",
     }
     # Patch the scorer class so that predict() raises inside score_referral_quality.
@@ -74,6 +75,7 @@ async def test_commission_succeeds_when_ai_fails(
     """Commission row and wallet credit are written even when quality scoring raises."""
     payload = {
         "partner_id": str(seed["partner_id"]),
+        "external_reference": "degrade-test-002",
         "conversion_value": "200.00",
     }
     with patch("app.services.ai_service.ReferralQualityScorer") as mock_cls:

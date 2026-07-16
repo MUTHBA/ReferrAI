@@ -107,6 +107,7 @@ async def _make_conversion(
         id=uuid.uuid4(),
         partner_id=partner_id,
         click_id=click_id,
+        external_reference=f"fraud-rule-{uuid.uuid4()}",
         conversion_value=Decimal("100"),
         attribution_model="last_click",
         converted_at=converted_at or _now(),
