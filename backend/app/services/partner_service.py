@@ -13,12 +13,15 @@
 # rank_order descending.
 # Added list_partners_ranked() for AI-RANK-002: returns all partners sorted
 # by their latest 'ranking' ai_score, with the score value for display.
+# AI-CHURN-004: added get_latest_score_by_partner() — batch fetch of the
+# latest score of a given type per partner, used to populate churn_score on
+# the partner list response without a per-row query.
 # -----------------------------------------------------------------------------
 
 import uuid
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ai_score import AIScore
@@ -103,6 +106,35 @@ class PartnerService:
             (row.Partner, float(row.rank_score) if row.rank_score is not None else None)
             for row in result
         ]
+
+    async def get_latest_score_by_partner(self, score_type: str) -> dict[uuid.UUID, float]:
+        """Return {partner_id: score} for the latest score of *score_type* per partner.
+
+        Uses a two-step subquery: first find the latest calculated_at per entity,
+        then join back to retrieve the score at that timestamp. Excludes synthetic
+        rows per dashboard query discipline.
+        """
+        ts_subq = (
+            select(
+                AIScore.entity_id,
+                func.max(AIScore.calculated_at).label("max_at"),
+            )
+            .where(AIScore.score_type == score_type)
+            .where(AIScore.is_synthetic == False)  # noqa: E712
+            .group_by(AIScore.entity_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(AIScore.entity_id, AIScore.score)
+            .join(
+                ts_subq,
+                (AIScore.entity_id == ts_subq.c.entity_id)
+                & (AIScore.calculated_at == ts_subq.c.max_at),
+            )
+            .where(AIScore.score_type == score_type)
+            .where(AIScore.is_synthetic == False)  # noqa: E712
+        )
+        return {row.entity_id: float(row.score) for row in result}
 
     async def update_partner_as_admin(
         self, partner_id: uuid.UUID, data: AdminPartnerUpdateRequest

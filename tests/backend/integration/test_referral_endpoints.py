@@ -85,6 +85,7 @@ async def test_record_conversion(
         "/api/v1/referrals/conversions",
         json={
             "partner_id": str(seed["partner_id"]),
+            "external_reference": "order-001",
             "conversion_value": "150.00",
         },
         headers=seed["admin_headers"],
@@ -92,9 +93,59 @@ async def test_record_conversion(
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert "id" in body
+    assert body["external_reference"] == "order-001"
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         conv = await session.get(ReferralConversion, uuid.UUID(body["id"]))
     assert conv is not None
     assert float(conv.conversion_value) == 150.00
+
+
+async def test_duplicate_conversion_returns_409(
+    client: AsyncClient, seed: dict, engine
+) -> None:
+    """Second POST with same partner_id + external_reference returns 409 and no duplicate commission."""
+    from sqlalchemy import func, select as sa_select
+    from app.models.commission import Commission
+
+    payload = {
+        "partner_id": str(seed["partner_id"]),
+        "external_reference": "order-idempotent-42",
+        "conversion_value": "200.00",
+    }
+
+    # First request — must succeed.
+    resp1 = await client.post(
+        "/api/v1/referrals/conversions", json=payload, headers=seed["admin_headers"]
+    )
+    assert resp1.status_code == 201, resp1.text
+
+    # Second identical request — must be rejected.
+    resp2 = await client.post(
+        "/api/v1/referrals/conversions", json=payload, headers=seed["admin_headers"]
+    )
+    assert resp2.status_code == 409, resp2.text
+    assert "order-idempotent-42" in resp2.json()["detail"]
+
+    # DB must contain exactly one conversion and one commission for this reference.
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        conv_count = (
+            await session.execute(
+                sa_select(func.count()).select_from(ReferralConversion).where(
+                    ReferralConversion.partner_id == seed["partner_id"],
+                    ReferralConversion.external_reference == "order-idempotent-42",
+                )
+            )
+        ).scalar_one()
+        commission_count = (
+            await session.execute(
+                sa_select(func.count()).select_from(Commission).where(
+                    Commission.partner_id == seed["partner_id"],
+                )
+            )
+        ).scalar_one()
+
+    assert conv_count == 1, "Duplicate conversion row must not be created"
+    assert commission_count == 1, "Duplicate commission must not be credited"

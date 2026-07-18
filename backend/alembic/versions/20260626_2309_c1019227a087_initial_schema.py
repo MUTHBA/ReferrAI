@@ -1,3 +1,4 @@
+# Alembic migration — creates all 16 ReferrAI tables (initial schema).
 """initial schema
 
 Revision ID: c1019227a087

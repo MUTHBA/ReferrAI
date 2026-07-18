@@ -14,6 +14,9 @@
 # fails (missing package, no internet, CUDA error) self.model is set to None
 # and all scoring methods return 0.0 — discovery silently degrades rather than
 # crashing the API.
+# AI-DISC-002: added score_candidate_full() — same computation as score_candidate()
+# but also returns the contributing factors dict needed for DiscoveredPartner
+# storage. Shared logic extracted into _compute_scores() to avoid duplication.
 # -----------------------------------------------------------------------------
 
 import logging
@@ -62,34 +65,60 @@ class PartnerDiscovery:
     # ------------------------------------------------------------------
 
     def _embed(self, text: str) -> np.ndarray:
-        """Encode a single text string into a dense vector.
-
-        Args:
-            text: Raw text to encode.
-
-        Returns:
-            1-D numpy array of shape (embedding_dim,).
-        """
+        """Encode a single text string into a dense vector."""
         return self.model.encode([text])[0]  # type: ignore[union-attr]
 
     def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        """Compute cosine similarity between two vectors, clamped to [0, 1].
-
-        Args:
-            a: First embedding vector.
-            b: Second embedding vector.
-
-        Returns:
-            float in [0, 1]; 0.0 if either vector has zero norm.
-        """
+        """Compute cosine similarity between two vectors, clamped to [0, 1]."""
         norm_a = float(np.linalg.norm(a))
         norm_b = float(np.linalg.norm(b))
         if norm_a == 0.0 or norm_b == 0.0:
             return 0.0
         raw = float(np.dot(a, b) / (norm_a * norm_b))
-        # Clamp to [0, 1] — floating-point arithmetic can produce values
-        # marginally outside this range for nearly identical vectors.
         return min(1.0, max(0.0, raw))
+
+    async def _compute_scores(
+        self, db: AsyncSession, candidate: dict
+    ) -> tuple[float, float, float]:
+        """Return (similarity_score, category_score, geographic_score) for a candidate.
+
+        Caller must verify self.model is not None before calling. Exceptions
+        propagate to the caller, which wraps them in a try/except.
+        """
+        result = await db.execute(
+            select(Partner)
+            .where(Partner.status == "active")
+            .where(Partner.is_synthetic == False)  # noqa: E712
+        )
+        partners = result.scalars().all()
+
+        candidate_text = (
+            f"{candidate['business_name']} "
+            f"{candidate['category']} "
+            f"{candidate['description']}"
+        )
+        candidate_vec = self._embed(candidate_text)
+
+        similarity_score = 0.0
+        category_score = 0.5  # default: no category match found yet
+
+        for partner in partners:
+            partner_text = (
+                f"{partner.business_name or ''} {partner.category or ''}"
+            ).strip()
+            partner_vec = self._embed(partner_text)
+            sim = self._cosine_similarity(candidate_vec, partner_vec)
+            if sim > similarity_score:
+                similarity_score = sim
+
+            if (
+                partner.category
+                and partner.category == candidate.get("category")
+            ):
+                category_score = 1.0
+
+        geographic_score = 1.0  # placeholder — no geo data on Partner rows yet
+        return similarity_score, category_score, geographic_score
 
     # ------------------------------------------------------------------
     # Public API
@@ -98,72 +127,36 @@ class PartnerDiscovery:
     async def score_candidate(self, db: AsyncSession, candidate: dict) -> float:
         """Compute a 0–100 partner-potential score for a candidate business.
 
-        Embeds the candidate against the current active partner pool and returns
-        a weighted combination of semantic similarity, category match, and a
-        geographic placeholder.
-
-        Args:
-            db:        SQLAlchemy async session for partner DB queries.
-            candidate: Dict with keys: business_name, category, description,
-                       city, country.
-
-        Returns:
-            float in [0, 100] rounded to 2 decimal places.
-            Returns 0.0 if the embedding model is unavailable or any error occurs.
+        Returns 0.0 if the embedding model is unavailable or any error occurs.
         """
         if self.model is None:
             return 0.0
-
         try:
-            # --- Load active non-synthetic partners ---
-            result = await db.execute(
-                select(Partner)
-                .where(Partner.status == "active")
-                .where(Partner.is_synthetic == False)  # noqa: E712
-            )
-            partners = result.scalars().all()
-
-            # --- Embed the candidate ---
-            candidate_text = (
-                f"{candidate['business_name']} "
-                f"{candidate['category']} "
-                f"{candidate['description']}"
-            )
-            candidate_vec = self._embed(candidate_text)
-
-            # --- Sub-scores ---
-            similarity_score = 0.0
-            category_score = 0.5  # default: no category match found yet
-
-            for partner in partners:
-                partner_text = (
-                    f"{partner.business_name or ''} {partner.category or ''}"
-                ).strip()
-                partner_vec = self._embed(partner_text)
-                sim = self._cosine_similarity(candidate_vec, partner_vec)
-                if sim > similarity_score:
-                    similarity_score = sim
-
-                if (
-                    partner.category
-                    and partner.category == candidate.get("category")
-                ):
-                    category_score = 1.0
-
-            # Placeholder: no geographic data stored on partners yet
-            geographic_score = 1.0
-
-            potential_score = (
-                similarity_score * 0.5
-                + category_score * 0.3
-                + geographic_score * 0.2
-            ) * 100
-
-            return round(potential_score, 2)
-
+            sim, cat, geo = await self._compute_scores(db, candidate)
+            return round((sim * 0.5 + cat * 0.3 + geo * 0.2) * 100, 2)
         except Exception:
             logger.exception("PartnerDiscovery.score_candidate failed")
             return 0.0
+
+    async def score_candidate_full(
+        self, db: AsyncSession, candidate: dict
+    ) -> tuple[float, dict]:
+        """Like score_candidate() but also returns the contributing score factors.
+
+        Returns:
+            (total_score: float, factors: dict with keys similarity, category_match,
+            geographic) — factors suitable for storing in DiscoveredPartner.score_factors.
+            Falls back to (0.0, default_factors) when the model is unavailable.
+        """
+        if self.model is None:
+            return 0.0, self.score_factors(0.0, 0.5, 1.0)
+        try:
+            sim, cat, geo = await self._compute_scores(db, candidate)
+            total = round((sim * 0.5 + cat * 0.3 + geo * 0.2) * 100, 2)
+            return total, self.score_factors(sim, cat, geo)
+        except Exception:
+            logger.exception("PartnerDiscovery.score_candidate_full failed")
+            return 0.0, self.score_factors(0.0, 0.5, 1.0)
 
     def score_factors(
         self,
@@ -171,16 +164,7 @@ class PartnerDiscovery:
         category: float,
         geographic: float,
     ) -> dict:
-        """Assemble the three sub-scores into a named dict for storage.
-
-        Args:
-            similarity:  Max cosine similarity vs partner pool (0–1).
-            category:    Category match score — 1.0 if matched, 0.5 otherwise.
-            geographic:  Geographic proximity score (0–1).
-
-        Returns:
-            Dict suitable for storing in ai_scores.contributing_factors.
-        """
+        """Assemble the three sub-scores into a named dict for storage."""
         return {
             "similarity": similarity,
             "category_match": category,

@@ -1,3 +1,4 @@
+# Alembic migration — adds FraudRuleEngine threshold keys to the settings table.
 """add fraud rule engine threshold settings
 
 Revision ID: f1c2d3e4a567

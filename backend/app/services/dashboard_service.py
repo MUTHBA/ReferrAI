@@ -9,6 +9,10 @@
 # consumption — no ORM model serialisation needed there.
 # Added rank_position + total_ranked_partners for AI-RANK-003: computes the
 # partner's position in the latest ranking run so the UI can show "#X of Y".
+# AI-CHURN-004: replaced churn_alert_count=0 placeholder with a real query;
+# added _churn_at_risk_partners() and wired the result into AdminDashboardResponse.
+# Threshold is read from the settings table (key: churn.alert_threshold,
+# default: 70) so it can be tuned at runtime without a redeploy.
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -30,10 +34,12 @@ from app.repositories.wallet_repository import WalletRepository
 from app.schemas.dashboard import (
     AdminDashboardResponse,
     AdminKPIs,
+    ChurnAtRiskPartner,
     PartnerDashboardResponse,
     PartnerKPIs,
     VolumeDataPoint,
 )
+from app.services.setting_service import SettingService
 
 
 class DashboardService:
@@ -45,11 +51,43 @@ class DashboardService:
     # ------------------------------------------------------------------ #
 
     async def get_admin_dashboard(self, days: int = 30) -> AdminDashboardResponse:
-        kpis = await self._admin_kpis()
+        churn_threshold = float(
+            await SettingService(self.session).get("churn.alert_threshold", 70.0)
+        )
+        kpis = await self._admin_kpis(churn_threshold)
         chart = await self._volume_chart(days)
-        return AdminDashboardResponse(kpis=kpis, volume_chart=chart)
+        at_risk = await self._churn_at_risk_partners(churn_threshold)
+        return AdminDashboardResponse(kpis=kpis, volume_chart=chart, churn_at_risk_partners=at_risk)
 
-    async def _admin_kpis(self) -> AdminKPIs:
+    def _latest_score_subq(self, score_type: str):
+        """Build a (entity_id, score) subquery for the latest score of *score_type*.
+
+        Two-step: first find max(calculated_at) per entity, then join to get the
+        score at that timestamp. Excludes synthetic rows.
+        """
+        ts_subq = (
+            select(
+                AIScore.entity_id,
+                func.max(AIScore.calculated_at).label("max_at"),
+            )
+            .where(AIScore.score_type == score_type)
+            .where(AIScore.is_synthetic.is_(False))
+            .group_by(AIScore.entity_id)
+            .subquery(f"latest_{score_type}_ts")
+        )
+        return (
+            select(AIScore.entity_id.label("entity_id"), AIScore.score.label("score"))
+            .join(
+                ts_subq,
+                (AIScore.entity_id == ts_subq.c.entity_id)
+                & (AIScore.calculated_at == ts_subq.c.max_at),
+            )
+            .where(AIScore.score_type == score_type)
+            .where(AIScore.is_synthetic.is_(False))
+            .subquery(f"latest_{score_type}")
+        )
+
+    async def _admin_kpis(self, churn_threshold: float) -> AdminKPIs:
         total_conversions = await self.session.scalar(
             select(func.count()).select_from(ReferralConversion)
             .where(ReferralConversion.is_synthetic.is_(False))
@@ -78,6 +116,13 @@ class DashboardService:
             .where(FraudFlag.status == "pending_review")
         ) or 0
 
+        churn_subq = self._latest_score_subq("churn_risk")
+        churn_alert_count = await self.session.scalar(
+            select(func.count())
+            .select_from(churn_subq)
+            .where(churn_subq.c.score > churn_threshold)
+        ) or 0
+
         return AdminKPIs(
             total_conversions=total_conversions,
             active_partners=active_partners,
@@ -85,8 +130,30 @@ class DashboardService:
             pending_payout_count=payout_row.cnt,
             pending_payout_amount=Decimal(str(payout_row.total)),
             fraud_alert_count=fraud_alert_count,
-            churn_alert_count=0,  # placeholder until AI-CHURN-002
+            churn_alert_count=churn_alert_count,
         )
+
+    async def _churn_at_risk_partners(self, threshold: float) -> list[ChurnAtRiskPartner]:
+        churn_subq = self._latest_score_subq("churn_risk")
+        rows = await self.session.execute(
+            select(
+                Partner.id.label("partner_id"),
+                Partner.name.label("name"),
+                churn_subq.c.score.label("churn_score"),
+            )
+            .join(churn_subq, Partner.id == churn_subq.c.entity_id)
+            .where(Partner.is_synthetic.is_(False))
+            .where(churn_subq.c.score > threshold)
+            .order_by(churn_subq.c.score.desc())
+        )
+        return [
+            ChurnAtRiskPartner(
+                partner_id=row.partner_id,
+                name=row.name,
+                churn_score=float(row.churn_score),
+            )
+            for row in rows
+        ]
 
     async def _volume_chart(self, days: int) -> list[VolumeDataPoint]:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
