@@ -26,7 +26,7 @@ from app.models.partner import Partner, PartnerTier
 
 
 async def test_tier_upgrades_after_crossing_threshold(
-    client: AsyncClient, seed: dict, engine
+    client: AsyncClient, seed: dict, seed_click: uuid.UUID, engine
 ) -> None:
     """Partner tier advances from None → Bronze → Silver as conversions accumulate."""
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -62,7 +62,7 @@ async def test_tier_upgrades_after_crossing_threshold(
         resp = await client.post(
             "/api/v1/referrals/conversions",
             json={
-                "partner_id": str(seed["partner_id"]),
+                "click_id": str(seed_click),
                 "external_reference": f"tier-test-{_conv_counter['n']}",
                 "conversion_value": "100.00",
             },

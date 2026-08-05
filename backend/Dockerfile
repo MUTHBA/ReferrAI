@@ -16,16 +16,21 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# System deps: curl (health-check), libpq (psycopg2 runtime)
+# System deps: curl (health-check), libpq (psycopg2 runtime), build-essential
+# (g++ is required to compile shap's native _cext extension during pip install)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libpq5 \
+    && apt-get install -y --no-install-recommends curl libpq5 build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages first (cached unless requirements files change).
 # requirements-ml.txt contains heavy AI/ML dependencies (scikit-learn, joblib,
-# sentence-transformers, shap) required by the AI scoring pipeline.
+# sentence-transformers, shap) required by the AI scoring pipeline. torch is
+# installed from the CPU-only wheel index first so pip's resolver picks the
+# CPU build instead of pulling multi-GB CUDA/GPU packages that this dev
+# container never uses.
 COPY requirements.txt requirements-ml.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-ml.txt
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt -r requirements-ml.txt
 
 # Copy source — overridden by bind-mount in development
 COPY . .

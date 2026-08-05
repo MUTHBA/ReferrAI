@@ -30,11 +30,12 @@ from app.services import ai_service
 async def test_conversion_succeeds_when_ai_fails(
     client: AsyncClient,
     seed: dict,
+    seed_click: uuid.UUID,
     engine,
 ) -> None:
     """A conversion records as 201 even when the quality scorer raises."""
     payload = {
-        "partner_id": str(seed["partner_id"]),
+        "click_id": str(seed_click),
         "external_reference": "degrade-test-001",
         "conversion_value": "100.00",
     }
@@ -70,11 +71,12 @@ async def test_conversion_succeeds_when_ai_fails(
 async def test_commission_succeeds_when_ai_fails(
     client: AsyncClient,
     seed: dict,
+    seed_click: uuid.UUID,
     engine,
 ) -> None:
     """Commission row and wallet credit are written even when quality scoring raises."""
     payload = {
-        "partner_id": str(seed["partner_id"]),
+        "click_id": str(seed_click),
         "external_reference": "degrade-test-002",
         "conversion_value": "200.00",
     }

@@ -29,7 +29,7 @@ from app.models.wallet import Wallet
 
 
 async def test_conversion_creates_commission_with_correct_amount(
-    client: AsyncClient, seed: dict, engine
+    client: AsyncClient, seed: dict, seed_click: uuid.UUID, engine
 ) -> None:
     """Recording a conversion creates a Commission row worth 10% of conversion_value."""
     conversion_value = Decimal("200.00")
@@ -38,7 +38,7 @@ async def test_conversion_creates_commission_with_correct_amount(
     resp = await client.post(
         "/api/v1/referrals/conversions",
         json={
-            "partner_id": str(seed["partner_id"]),
+            "click_id": str(seed_click),
             "external_reference": "comm-test-001",
             "conversion_value": str(conversion_value),
         },
@@ -60,7 +60,7 @@ async def test_conversion_creates_commission_with_correct_amount(
 
 
 async def test_conversion_credits_wallet_balance(
-    client: AsyncClient, seed: dict, engine
+    client: AsyncClient, seed: dict, seed_click: uuid.UUID, engine
 ) -> None:
     """Recording a conversion increases the partner's wallet balance by the commission amount."""
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -72,7 +72,7 @@ async def test_conversion_credits_wallet_balance(
     resp = await client.post(
         "/api/v1/referrals/conversions",
         json={
-            "partner_id": str(seed["partner_id"]),
+            "click_id": str(seed_click),
             "external_reference": "comm-test-002",
             "conversion_value": "100.00",
         },

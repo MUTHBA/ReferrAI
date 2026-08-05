@@ -78,13 +78,13 @@ async def test_simulate_click_records_in_db(
 
 
 async def test_record_conversion(
-    client: AsyncClient, seed: dict, engine
+    client: AsyncClient, seed: dict, seed_click: uuid.UUID, engine
 ) -> None:
     """POST /referrals/conversions (admin) returns 201 and persists a conversion row."""
     resp = await client.post(
         "/api/v1/referrals/conversions",
         json={
-            "partner_id": str(seed["partner_id"]),
+            "click_id": str(seed_click),
             "external_reference": "order-001",
             "conversion_value": "150.00",
         },
@@ -103,14 +103,14 @@ async def test_record_conversion(
 
 
 async def test_duplicate_conversion_returns_409(
-    client: AsyncClient, seed: dict, engine
+    client: AsyncClient, seed: dict, seed_click: uuid.UUID, engine
 ) -> None:
     """Second POST with same partner_id + external_reference returns 409 and no duplicate commission."""
     from sqlalchemy import func, select as sa_select
     from app.models.commission import Commission
 
     payload = {
-        "partner_id": str(seed["partner_id"]),
+        "click_id": str(seed_click),
         "external_reference": "order-idempotent-42",
         "conversion_value": "200.00",
     }

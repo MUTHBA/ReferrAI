@@ -43,13 +43,15 @@ async def _partner_headers(client: AsyncClient) -> dict:
 _wallet_credit_counter = {"n": 0}
 
 
-async def _credit_wallet(client: AsyncClient, seed: dict, amount: str = "200.00") -> None:
+async def _credit_wallet(
+    client: AsyncClient, seed: dict, click_id: uuid.UUID, amount: str = "200.00"
+) -> None:
     """Record a conversion so the partner's wallet has funds available."""
     _wallet_credit_counter["n"] += 1
     resp = await client.post(
         "/api/v1/referrals/conversions",
         json={
-            "partner_id": str(seed["partner_id"]),
+            "click_id": str(click_id),
             "external_reference": f"wallet-test-{_wallet_credit_counter['n']}",
             "conversion_value": amount,
         },
@@ -69,10 +71,10 @@ async def test_get_wallet_returns_balance(client: AsyncClient, seed: dict) -> No
 
 
 async def test_withdrawal_auto_approved_below_threshold(
-    client: AsyncClient, seed: dict
+    client: AsyncClient, seed: dict, seed_click: uuid.UUID
 ) -> None:
     """Withdrawal below auto-approval threshold ($100) with no fraud flag is auto-approved."""
-    await _credit_wallet(client, seed, "200.00")  # credits $20 (10%)
+    await _credit_wallet(client, seed, seed_click, "200.00")  # credits $20 (10%)
     headers = await _partner_headers(client)
 
     resp = await client.post(
@@ -89,10 +91,10 @@ async def test_withdrawal_auto_approved_below_threshold(
 
 
 async def test_withdrawal_blocked_by_active_fraud_flag(
-    client: AsyncClient, seed: dict, engine
+    client: AsyncClient, seed: dict, seed_click: uuid.UUID, engine
 ) -> None:
     """Withdrawal stays 'pending' when the partner has an active fraud flag."""
-    await _credit_wallet(client, seed, "200.00")  # credits $20
+    await _credit_wallet(client, seed, seed_click, "200.00")  # credits $20
 
     # Insert an AIScore and FraudFlag directly (mimics what score_fraud produces)
     factory = async_sessionmaker(engine, expire_on_commit=False)

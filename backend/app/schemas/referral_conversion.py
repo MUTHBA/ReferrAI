@@ -17,9 +17,14 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ConversionCreate(BaseModel):
-    """Payload for recording a new referral conversion."""
+    """Payload for recording a new referral conversion.
 
-    partner_id: uuid.UUID
+    partner_id is not supplied by the caller — the route derives it
+    server-side from click_id (via referral_clicks) or referral_code (via
+    referral_codes), so a caller cannot submit a mismatched pair.
+    """
+
+    partner_id: Optional[uuid.UUID] = None
     external_reference: str
     referral_code: Optional[str] = None
     click_id: Optional[uuid.UUID] = None

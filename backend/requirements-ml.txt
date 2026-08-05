@@ -15,13 +15,13 @@
 #   full AI feature set works in Docker.
 # -----------------------------------------------------------------------------
 
-# Core ML — imported at module level by scoring modules; must be installed
+# AI/ML dependencies — heavy, install separately after core requirements.
+# shap and sentence-transformers ARE installed in Docker (unlike a leaner
+# alternative that excludes them as optional lazy imports): the Dockerfile
+# installs build-essential so shap's g++ extension compiles, and installs
+# torch from the CPU-only wheel index before this file so sentence-transformers'
+# ~500MB PyTorch dependency never pulls in unneeded CUDA/GPU packages.
 scikit-learn==1.6.1
 joblib==1.4.2
-
-# shap and sentence-transformers are intentionally excluded from Docker:
-#   - shap requires g++ to build its C extension (absent in python:3.13-slim)
-#   - sentence-transformers pulls in PyTorch (~500 MB), making the image impractical
-# Both are lazy imports wrapped in broad except-clauses, so the app degrades
-# gracefully (explain_tree returns {}, discovery embeddings return null).
-# To enable locally: pip install shap==0.46.0 sentence-transformers==3.3.1
+sentence-transformers==3.3.1
+shap==0.46.0
