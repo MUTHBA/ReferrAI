@@ -44,6 +44,7 @@ async def perf_data(engine, seed: dict) -> dict:
         conversion = ReferralConversion(
             id=conversion_id,
             partner_id=seed["partner_id"],
+            external_reference=f"perf-test-{conversion_id}",
             conversion_value=Decimal("150.00"),
             attribution_model="last_click",
             is_synthetic=False,

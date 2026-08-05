@@ -111,7 +111,11 @@ async def _record_conversion_via_click(
 
     resp = await client.post(
         "/api/v1/referrals/conversions",
-        json={"click_id": str(click_id), "conversion_value": conversion_value},
+        json={
+            "click_id": str(click_id),
+            "external_reference": f"order-{uuid.uuid4()}",
+            "conversion_value": conversion_value,
+        },
         headers=admin_headers,
     )
     assert resp.status_code == 201, resp.text
@@ -393,7 +397,11 @@ async def test_partner_cannot_call_conversions_endpoint(
 
     resp = await client.post(
         "/api/v1/referrals/conversions",
-        json={"click_id": str(click_id), "conversion_value": "50.00"},
+        json={
+            "click_id": str(click_id),
+            "external_reference": f"order-{uuid.uuid4()}",
+            "conversion_value": "50.00",
+        },
         headers=registered_users["partner_headers"],
     )
     assert resp.status_code == 403, resp.text
@@ -410,7 +418,11 @@ async def test_admin_conversion_with_unknown_click_id_returns_404(
 ) -> None:
     resp = await client.post(
         "/api/v1/referrals/conversions",
-        json={"click_id": str(uuid.uuid4()), "conversion_value": "50.00"},
+        json={
+            "click_id": str(uuid.uuid4()),
+            "external_reference": f"order-{uuid.uuid4()}",
+            "conversion_value": "50.00",
+        },
         headers=registered_users["admin_headers"],
     )
     assert resp.status_code == 404, resp.text

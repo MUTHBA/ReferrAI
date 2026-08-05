@@ -2,10 +2,14 @@
 # backend/app/services/referral_conversion_service.py
 #
 # Orchestrates the full conversion recording flow: code resolution, attribution,
-# conversion insert, commission calculation, wallet credit, and partner counter
-# increment — all flushed and committed in one transaction.
+# conversion insert, commission calculation, wallet credit, partner counter
+# increment, and automatic tier evaluation — all flushed and committed in one
+# transaction.
 # CommissionService.calculate_for_conversion() and WalletService.credit() both
 # flush without committing so they can be composed here with a single commit.
+# PartnerService.evaluate_tier_upgrade() is called after counters are flushed
+# so it reads the updated totals (PRT-003). It commits internally when a tier
+# upgrade occurs; the outer commit is a no-op in that case.
 # AI quality scoring is dispatched as a FastAPI background task after commit.
 # -----------------------------------------------------------------------------
 
@@ -23,6 +27,7 @@ from app.schemas.referral_conversion import ConversionCreate
 from app.services import ai_service
 from app.services.attribution_service import AttributionService
 from app.services.commission_service import CommissionService
+from app.services.partner_service import PartnerService
 from app.services.setting_service import SettingService
 from app.services.wallet_service import WalletService
 
@@ -43,6 +48,22 @@ class ConversionPartnerNotFoundError(Exception):
         self.partner_id = partner_id
 
 
+class DuplicateConversionError(Exception):
+    """Raised when a conversion with the same partner_id + external_reference already exists.
+
+    The caller should return HTTP 409 — do not recalculate commission or
+    re-credit the wallet.
+    """
+
+    def __init__(self, partner_id: uuid.UUID, external_reference: str) -> None:
+        super().__init__(
+            f"Conversion for partner {partner_id} with reference "
+            f"'{external_reference}' already exists"
+        )
+        self.partner_id = partner_id
+        self.external_reference = external_reference
+
+
 class ReferralConversionService:
     """Records a referral conversion and triggers downstream commission calculation."""
 
@@ -59,6 +80,13 @@ class ReferralConversionService:
         All writes are flushed individually but committed together so the
         transaction is all-or-nothing.
         """
+        # 0. Idempotency check — reject duplicates before touching anything else.
+        existing = await ReferralConversionRepository(self.session).get_by_partner_and_reference(
+            data.partner_id, data.external_reference
+        )
+        if existing is not None:
+            raise DuplicateConversionError(data.partner_id, data.external_reference)
+
         # 1. Resolve referral_code string → ReferralCode UUID if provided.
         referral_code_id: uuid.UUID | None = None
         if data.referral_code:
@@ -85,6 +113,7 @@ class ReferralConversionService:
         conversion = ReferralConversion(
             id=uuid.uuid4(),
             partner_id=data.partner_id,
+            external_reference=data.external_reference,
             click_id=attributed_click.id if attributed_click else None,
             referral_link_id=attributed_click.referral_link_id if attributed_click else None,
             referral_code_id=referral_code_id,
@@ -116,7 +145,15 @@ class ReferralConversionService:
         )
         await self.session.flush()
 
-        # 8. Commit: conversion + commission + wallet credit + partner counters atomically.
+        # 7b. Evaluate tier upgrade after counters are flushed so the updated
+        # totals are visible to the query inside evaluate_tier_upgrade (PRT-003).
+        # Only upgrades — never downgrades (enforced by rank_order comparison).
+        # Commits internally when a tier changes; no-op return means no upgrade.
+        await PartnerService(self.session).evaluate_tier_upgrade(data.partner_id)
+
+        # 8. Commit: conversion + commission + wallet credit + counters atomically.
+        # evaluate_tier_upgrade already committed when a tier upgrade occurred;
+        # this commit handles the no-upgrade path.
         await self.session.commit()
 
         # 9. AI quality scoring runs after the response is sent (AI-QUAL-002).

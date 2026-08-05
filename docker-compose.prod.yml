@@ -1,0 +1,82 @@
+# -----------------------------------------------------------------------------
+# docker-compose.prod.yml
+#
+# Production Docker Compose configuration (DEMO-002).
+#
+# Key differences from docker-compose.yml (development):
+#   - Frontend is a compiled static build served by nginx (Dockerfile.prod),
+#     not the Vite dev server. No bind-mounts; images are self-contained.
+#   - Backend runs 4 uvicorn workers with --reload disabled.
+#   - PostgreSQL port is NOT exposed externally (internal traffic only).
+#   - Only port 80 is exposed to the host (all traffic goes through nginx).
+#   - Required env vars use the ${VAR:?message} syntax — Docker Compose aborts
+#     with a clear error if any are missing from the .env file.
+#   - restart: always ensures containers recover from unexpected crashes.
+#
+# Usage:
+#   cp .env.example .env          # fill in SECRET_KEY, passwords, etc.
+#   docker compose -f docker-compose.prod.yml up --build -d
+#   docker compose -f docker-compose.prod.yml logs -f backend
+# -----------------------------------------------------------------------------
+
+services:
+
+  # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:?POSTGRES_USER is required in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in .env}
+      POSTGRES_DB:       ${POSTGRES_DB:?POSTGRES_DB is required in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # persistent across restarts
+    # Port 5432 is intentionally NOT exposed — DB is only reachable internally
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── FastAPI backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required in .env}
+      SECRET_KEY:   ${SECRET_KEY:?SECRET_KEY is required in .env}
+    # No bind-mount — image is immutable in production
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    # Run migrations then start with 4 workers (no --reload in production)
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
+
+  # ── React static build + nginx ────────────────────────────────────────────
+  # Dockerfile.prod runs `npm run build` and copies dist/ into an nginx:alpine
+  # image. nginx serves the React SPA and proxies /api/* to the backend.
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: always
+    ports:
+      - "80:80"                  # only this port is exposed to the outside world
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:                 # persists DB data across container restarts and updates

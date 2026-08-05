@@ -2,9 +2,10 @@
 # backend/app/schemas/synthetic_data.py
 #
 # Request and response schemas for the admin synthetic-data generation endpoint
-# (AI-DATA-002). Validation bounds prevent accidental runaway inserts: partner
-# count capped at 500 (avoids multi-minute bcrypt wall), clicks per partner
-# capped at 200, conversions capped at 10 000.
+# (AI-DATA-002) and batch scoring endpoints (AI-CHURN-003, AI-RANK-001).
+# Validation bounds prevent accidental runaway inserts: partner count capped at
+# 500 (avoids multi-minute bcrypt wall), clicks per partner capped at 200,
+# conversions capped at 10 000.
 # -----------------------------------------------------------------------------
 
 from pydantic import BaseModel, Field
@@ -25,4 +26,8 @@ class SyntheticDataResponse(BaseModel):
 
 
 class ChurnScoringResponse(BaseModel):
+    partners_scored: int
+
+
+class RankingScoringResponse(BaseModel):
     partners_scored: int

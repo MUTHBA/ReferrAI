@@ -2,17 +2,25 @@
 # backend/requirements-ml.txt
 #
 # Heavy AI/ML dependencies split from requirements.txt to keep the base Docker
-# image lean during early development phases. Install with:
-#   pip install -r requirements-ml.txt
-# scikit-learn provides Isolation Forest (fraud detection) and clustering.
-# sentence-transformers generates embeddings for partner similarity matching.
-# shap produces per-feature explanations for AI scores shown on the dashboard.
-# When AI features are implemented, add this file to the Dockerfile's RUN pip
-# install step after requirements.txt.
+# image lean. These are now included in the Dockerfile RUN pip install step
+# because the AI scoring pipeline (fraud, churn, quality, ranking) imports
+# scikit-learn, joblib, and numpy at module level.
+#
+# Version notes:
+#   scikit-learn 1.4.x — broken on Python 3.13 (build dep numpy==2.0.0rc1 was
+#   yanked from PyPI). 1.6.1 is the current stable release with Python 3.13
+#   wheels; numpy is pulled as a transitive dep.
+#   shap and sentence-transformers are lazy imports (imported inside functions),
+#   so they degrade gracefully if unavailable, but are included here so the
+#   full AI feature set works in Docker.
 # -----------------------------------------------------------------------------
 
 # AI/ML dependencies — heavy, install separately after core requirements.
-# In Docker: install during phase-4 feature work, not in the base image.
+# shap and sentence-transformers ARE installed in Docker (unlike a leaner
+# alternative that excludes them as optional lazy imports): the Dockerfile
+# installs build-essential so shap's g++ extension compiles, and installs
+# torch from the CPU-only wheel index before this file so sentence-transformers'
+# ~500MB PyTorch dependency never pulls in unneeded CUDA/GPU packages.
 scikit-learn==1.6.1
 joblib==1.4.2
 sentence-transformers==3.3.1

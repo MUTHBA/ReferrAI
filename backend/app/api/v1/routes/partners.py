@@ -6,11 +6,16 @@
 # Partner-only routes: view own profile, update own profile (name/contact
 # fields only — no status or tier changes). Mounted in main.py with
 # prefix="/api/v1".
+# Added AI-RANK-002: GET /partners?sort=rank returns partners sorted by latest
+# composite ranking score. rank_score field populated on each PartnerResponse.
+# AI-CHURN-004: churn_score is now populated on every list response (all sort
+# modes) via get_latest_score_by_partner("churn_risk") — one batch query.
 # -----------------------------------------------------------------------------
 
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -41,11 +46,27 @@ router = APIRouter(tags=["partners"])
 
 @router.get("/partners", response_model=list[PartnerResponse])
 async def list_partners(
+    sort: Optional[str] = Query(default=None, description="Sort order. Use 'rank' to sort by composite ranking score."),
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> list[PartnerResponse]:
-    partners = await PartnerService(db).list_partners()
-    return [PartnerResponse.model_validate(p) for p in partners]
+    service = PartnerService(db)
+
+    if sort == "rank":
+        pairs = await service.list_partners_ranked()
+        base_list = [
+            PartnerResponse.model_validate(p).model_copy(update={"rank_score": score})
+            for p, score in pairs
+        ]
+    else:
+        partners = await service.list_partners()
+        base_list = [PartnerResponse.model_validate(p) for p in partners]
+
+    churn_scores = await service.get_latest_score_by_partner("churn_risk")
+    return [
+        p.model_copy(update={"churn_score": churn_scores.get(p.id)})
+        for p in base_list
+    ]
 
 
 @router.get("/partners/{partner_id}", response_model=PartnerResponse)

@@ -49,7 +49,7 @@ from app.core.database import get_db  # noqa: E402
 from app.core.security import create_access_token, hash_password  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base, Partner, User, Wallet  # noqa: E402
-from app.models.referral import ReferralLink  # noqa: E402
+from app.models.referral import ReferralClick, ReferralLink  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -170,3 +170,26 @@ async def seed(engine) -> dict:
         "link_id": link_id,
         "link_slug": slug,
     }
+
+
+@pytest_asyncio.fixture
+async def seed_click(engine, seed: dict) -> uuid.UUID:
+    """Insert a ReferralClick row for the seeded link/partner.
+
+    POST /referrals/conversions does not accept partner_id directly — it
+    derives partner_id from click_id (via referral_clicks.partner_id) or
+    referral_code — so tests need a real click row to post against.
+    """
+    click_id = uuid.uuid4()
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        session.add(
+            ReferralClick(
+                id=click_id,
+                referral_link_id=seed["link_id"],
+                partner_id=seed["partner_id"],
+                is_synthetic=False,
+            )
+        )
+        await session.commit()
+    return click_id

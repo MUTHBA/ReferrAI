@@ -37,6 +37,7 @@ from app.services.referral_click_service import ReferralClickService
 from app.services.referral_code_service import ReferralCodeService
 from app.services.referral_conversion_service import (
     ConversionPartnerNotFoundError,
+    DuplicateConversionError,
     ReferralCodeNotFoundError,
     ReferralConversionService,
 )
@@ -231,6 +232,8 @@ async def record_conversion(
     service = ReferralConversionService(db)
     try:
         conversion = await service.record_conversion(payload, background_tasks)
+    except DuplicateConversionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except ReferralCodeNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ConversionPartnerNotFoundError as exc:

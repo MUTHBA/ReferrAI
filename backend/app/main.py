@@ -9,6 +9,8 @@
 # history, and withdrawal request/review endpoints. Added in PRT-001/PRT-002:
 # partner_routes wired for partner profile and tier CRUD. Added in RPT-001/002/003:
 # dashboard_routes wired for admin/partner KPI dashboards and CSV exports.
+# Added in AI-FRD-005: fraud_routes wired for fraud flag review queue.
+# Added AI-DISC-002/003: discovery endpoints live in admin_routes (/admin/discovery/...).
 # Developers: add new v1 routers with `app.include_router(router, prefix="/api/v1")`.
 # -----------------------------------------------------------------------------
 
@@ -19,6 +21,7 @@ from app.api.v1 import admin as admin_routes
 from app.api.v1 import ai_scores as ai_scores_routes
 from app.api.v1.routes import auth as auth_routes
 from app.api.v1.routes import dashboard as dashboard_routes
+from app.api.v1.routes import fraud as fraud_routes
 from app.api.v1.routes import partners as partner_routes
 from app.api.v1.routes import referrals as referral_routes
 from app.api.v1.routes import settings as settings_routes
@@ -51,6 +54,7 @@ app.include_router(referral_routes.redirect_router)  # public /r/{slug} — no /
 app.include_router(wallet_routes.router, prefix="/api/v1")
 app.include_router(partner_routes.router, prefix="/api/v1")
 app.include_router(dashboard_routes.router, prefix="/api/v1")
+app.include_router(fraud_routes.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["ops"])
