@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import require_admin, require_partner
 from app.models.ai_score import AIScore
-from app.models.referral import ReferralConversion
+from app.models.referral import ReferralClick, ReferralCode, ReferralConversion
 from app.models.user import User
 from app.repositories.partner_repository import PartnerRepository
 from app.schemas.referral import (
@@ -202,6 +202,32 @@ async def record_conversion(
     _: User = Depends(require_admin),
 ) -> ConversionResponse:
     """Record a referral conversion, attribute it to a click, and calculate commission."""
+    if payload.click_id is not None:
+        result = await db.execute(
+            select(ReferralClick.partner_id).where(ReferralClick.id == payload.click_id)
+        )
+        partner_id = result.scalar_one_or_none()
+        if partner_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Referral click not found",
+            )
+    elif payload.referral_code is not None:
+        result = await db.execute(
+            select(ReferralCode.partner_id).where(ReferralCode.code == payload.referral_code)
+        )
+        partner_id = result.scalar_one_or_none()
+        if partner_id is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(
+                ReferralCodeNotFoundError(payload.referral_code)
+            ))
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Either click_id or referral_code is required",
+        )
+    payload.partner_id = partner_id
+
     service = ReferralConversionService(db)
     try:
         conversion = await service.record_conversion(payload, background_tasks)
@@ -220,10 +246,19 @@ async def track_click(
     db: AsyncSession = Depends(get_db),
     utm_source: Optional[str] = None,
 ) -> RedirectResponse:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        # nginx is the only reverse proxy in front of this service and appends
+        # the real client IP via $proxy_add_x_forwarded_for — only the LAST
+        # entry is trustworthy; earlier entries can be client-spoofed.
+        client_ip = forwarded_for.split(",")[-1].strip()
+    else:
+        client_ip = request.client.host if request.client else None
+
     service = ReferralClickService(db)
     destination, click_id = await service.track(
         slug=slug,
-        ip_address=request.client.host if request.client else None,
+        ip_address=client_ip,
         user_agent=request.headers.get("user-agent"),
         utm_source=utm_source,
     )

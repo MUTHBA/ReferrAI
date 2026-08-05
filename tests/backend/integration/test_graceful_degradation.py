@@ -16,6 +16,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -27,14 +28,38 @@ from app.models.wallet import Wallet
 from app.services import ai_service
 
 
+@pytest_asyncio.fixture
+async def seed_click(engine, seed: dict) -> uuid.UUID:
+    """Insert a ReferralClick row for the seeded link/partner.
+
+    POST /referrals/conversions no longer accepts partner_id directly — it
+    derives partner_id from click_id (via referral_clicks.partner_id) or
+    referral_code — so tests need a real click row to post against.
+    """
+    click_id = uuid.uuid4()
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        session.add(
+            ReferralClick(
+                id=click_id,
+                referral_link_id=seed["link_id"],
+                partner_id=seed["partner_id"],
+                is_synthetic=False,
+            )
+        )
+        await session.commit()
+    return click_id
+
+
 async def test_conversion_succeeds_when_ai_fails(
     client: AsyncClient,
     seed: dict,
+    seed_click: uuid.UUID,
     engine,
 ) -> None:
     """A conversion records as 201 even when the quality scorer raises."""
     payload = {
-        "partner_id": str(seed["partner_id"]),
+        "click_id": str(seed_click),
         "conversion_value": "100.00",
     }
     # Patch the scorer class so that predict() raises inside score_referral_quality.
@@ -69,11 +94,12 @@ async def test_conversion_succeeds_when_ai_fails(
 async def test_commission_succeeds_when_ai_fails(
     client: AsyncClient,
     seed: dict,
+    seed_click: uuid.UUID,
     engine,
 ) -> None:
     """Commission row and wallet credit are written even when quality scoring raises."""
     payload = {
-        "partner_id": str(seed["partner_id"]),
+        "click_id": str(seed_click),
         "conversion_value": "200.00",
     }
     with patch("app.services.ai_service.ReferralQualityScorer") as mock_cls:
