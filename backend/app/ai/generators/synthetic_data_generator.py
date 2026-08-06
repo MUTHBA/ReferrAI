@@ -125,10 +125,24 @@ class SyntheticDataGenerator:
     async def generate_partners(self, n: int) -> list[Partner]:
         """Create n User + Partner + Wallet triplets with realistic fake data.
 
-        SQLAlchemy's unit-of-work flush resolves FK order automatically
-        (users → partners → wallets) so we can add all rows before committing.
+        Users are added and flushed in their own step, before any Partner rows
+        are added. SQLAlchemy's unit-of-work only orders INSERTs across
+        different mapped classes when a relationship() links them — User and
+        Partner have none (Partner.user_id is a plain FK column) — so adding
+        all three classes in one mixed batch and committing once is NOT
+        guaranteed to insert users before partners, and reliably violates
+        partners_user_id_fkey against Postgres (SQLite silently tolerates it,
+        which is why this went uncaught in the sqlite-backed test suite). An
+        explicit intermediate flush() removes the ambiguity entirely.
+
+        The users table has no is_synthetic column (see DATABASE_DESIGN.md) —
+        these synthetic users are identifiable only via their @synth.example.com
+        email domain and the placeholder password hash; unlike Partner/Wallet/
+        ReferralClick/ReferralConversion, there is nothing to tag here.
         """
+        users: list[User] = []
         partners: list[Partner] = []
+        wallets: list[Wallet] = []
 
         for _ in range(n):
             user_id = uuid.uuid4()
@@ -141,6 +155,7 @@ class SyntheticDataGenerator:
                 role="partner",
                 is_active=True,
             )
+            users.append(user)
 
             partner = Partner(
                 id=partner_id,
@@ -156,18 +171,19 @@ class SyntheticDataGenerator:
                 )[0],
                 is_synthetic=True,
             )
-
-            wallet = Wallet(
-                id=uuid.uuid4(),
-                partner_id=partner_id,
-            )
-
-            self.session.add(user)
-            self.session.add(partner)
-            self.session.add(wallet)
             partners.append(partner)
 
+            wallets.append(Wallet(id=uuid.uuid4(), partner_id=partner_id))
+
+        # Insert + flush users first so their rows exist in the DB before any
+        # partner row (which FKs to users.id) is even added to the session.
+        self.session.add_all(users)
+        await self.session.flush()
+
+        self.session.add_all(partners)
+        self.session.add_all(wallets)
         await self.session.commit()
+
         return partners
 
     # ------------------------------------------------------------------
@@ -184,10 +200,19 @@ class SyntheticDataGenerator:
         We therefore create one synthetic ReferralLink per unique partner_id
         before inserting clicks, satisfying the constraint without touching the
         schema.
+
+        Links are added and flushed in their own step, before any
+        ReferralClick rows are added — same reasoning as generate_partners():
+        ReferralLink and ReferralClick have no declared relationship(), so
+        SQLAlchemy cannot infer insert order across the two mapped classes,
+        and a single mixed commit is not guaranteed to insert links before
+        clicks (violates referral_clicks_referral_link_id_fkey against
+        Postgres).
         """
         unique_pids = list(set(partner_ids))
 
         # Build one synthetic link per unique partner for this batch
+        links: list[ReferralLink] = []
         link_map: dict[uuid.UUID, uuid.UUID] = {}
         for pid in unique_pids:
             link_id = uuid.uuid4()
@@ -199,8 +224,13 @@ class SyntheticDataGenerator:
                 destination_url=f"https://synth.example.com/ref/{pid}",
                 is_active=True,
             )
-            self.session.add(link)
+            links.append(link)
             link_map[pid] = link_id
+
+        # Insert + flush links first so their rows exist in the DB before any
+        # click row (which FKs to referral_links.id) is even added.
+        self.session.add_all(links)
+        await self.session.flush()
 
         clicks: list[ReferralClick] = []
         for _ in range(n):
@@ -216,9 +246,9 @@ class SyntheticDataGenerator:
                 clicked_at=_random_past_datetime(days=90),
                 is_synthetic=True,
             )
-            self.session.add(click)
             clicks.append(click)
 
+        self.session.add_all(clicks)
         await self.session.commit()
         return clicks
 
@@ -248,6 +278,7 @@ class SyntheticDataGenerator:
             conv = ReferralConversion(
                 id=uuid.uuid4(),
                 partner_id=click.partner_id,
+                external_reference=f"synthetic-{uuid.uuid4()}",
                 click_id=cid,
                 referral_link_id=click.referral_link_id,
                 referral_code_id=click.referral_code_id,

@@ -336,7 +336,15 @@ async def score_fraud(db: AsyncSession, click_id: uuid.UUID) -> None:
         raw_threshold = await SettingService(db).get("fraud.alert_threshold", 70.0)
         alert_threshold = float(raw_threshold)
 
-        if score > alert_threshold:
+        # A deterministic rule hit is flagged on its own, independent of the
+        # composite score/threshold: FraudRuleEngine's rules (AI-FRD-001) are
+        # high-confidence ground-truth signals by design, and diluting a rule
+        # hit into score = ml_score + rule_boost means it can be silently lost
+        # whenever ml_score is low or zero (e.g. no trained model — true in
+        # every environment until FraudDetector is trained). The composite
+        # score/threshold path still applies for pure-ML signals with no
+        # triggered rules.
+        if score > alert_threshold or triggered_rules:
             fraud_flag = FraudFlag(
                 id=uuid.uuid4(),
                 partner_id=partner_id,
@@ -346,11 +354,13 @@ async def score_fraud(db: AsyncSession, click_id: uuid.UUID) -> None:
             )
             db.add(fraud_flag)
             logger.warning(
-                "Fraud flag raised for partner %s (click %s, score %.2f > threshold %.2f)",
+                "Fraud flag raised for partner %s (click %s, score %.2f, "
+                "threshold %.2f, triggered_rules=%s)",
                 partner_id,
                 click_id,
                 score,
                 alert_threshold,
+                triggered_rules,
             )
 
         # SQLAlchemy's unit-of-work inserts ai_scores before fraud_flags

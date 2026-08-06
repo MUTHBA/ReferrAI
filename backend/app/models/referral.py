@@ -143,6 +143,15 @@ class ReferralConversion(Base):
             "attribution_model IN ('first_click', 'last_click')",
             name="ck_referral_conversions_attribution_model",
         ),
+        # Defense-in-depth: conversion_value must be strictly positive.
+        # ConversionCreate.conversion_value already enforces this at the API
+        # layer (Field(gt=0)), but per DATABASE_DESIGN.md money-critical
+        # constraints also belong at the DB layer so a future direct-DB
+        # script or a different entry point can't bypass it.
+        CheckConstraint(
+            "conversion_value > 0",
+            name="ck_referral_conversions_conversion_value_positive",
+        ),
         # Idempotency: one conversion per merchant order per partner.
         # Prevents double commission if the same webhook fires twice.
         UniqueConstraint(

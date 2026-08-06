@@ -13,7 +13,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConversionCreate(BaseModel):
@@ -28,7 +28,7 @@ class ConversionCreate(BaseModel):
     external_reference: str
     referral_code: Optional[str] = None
     click_id: Optional[uuid.UUID] = None
-    conversion_value: Decimal
+    conversion_value: Decimal = Field(gt=0)
 
 
 class ConversionResponse(BaseModel):
