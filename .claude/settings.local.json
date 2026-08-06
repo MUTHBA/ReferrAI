@@ -19,7 +19,8 @@
       "Bash(curl -sf http://localhost:8000/health)",
       "Bash(curl -sf http://localhost:80/health)",
       "Bash(curl -sfI http://localhost:3000)",
-      "Bash(curl -sfI http://localhost:80/)"
+      "Bash(curl -sfI http://localhost:80/)",
+      "PowerShell(docker compose up --build -d)"
     ]
   }
 }

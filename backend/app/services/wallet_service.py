@@ -93,12 +93,27 @@ class WalletService:
         wallet = await self.wallet_repo.get_by_partner_id(partner_id)
         if wallet is None:
             raise WalletNotFoundError(partner_id)
-        if wallet.balance < amount:
-            raise InsufficientBalanceError(wallet.balance, amount)
 
-        wallet.balance -= amount
-        wallet.total_withdrawn += amount
-        await self.session.flush()
+        # Atomic conditional UPDATE (financial-integrity hardening) — replaces
+        # the old read-check-write ("if wallet.balance < amount: raise" then
+        # "wallet.balance -= amount"), which had an unguarded window between
+        # the balance check and the write where two concurrent withdrawal
+        # requests could both read the same balance before either committed.
+        # See WalletRepository.debit_if_sufficient() for the full rationale.
+        debited = await self.wallet_repo.debit_if_sufficient(wallet.id, amount)
+        if debited is None:
+            raise InsufficientBalanceError(wallet.balance, amount)
+        new_balance, new_total_withdrawn = debited
+
+        # The UPDATE above already persisted these values; assign them to the
+        # in-memory ORM object too so any code that reads wallet.balance /
+        # wallet.total_withdrawn again later in this request sees the current
+        # value. This does cause one redundant (but harmless — it writes the
+        # same already-correct values) UPDATE at the next flush, since any
+        # attribute assignment marks the object dirty regardless of whether
+        # the value actually changed.
+        wallet.balance = new_balance
+        wallet.total_withdrawn = new_total_withdrawn
 
         transaction = Transaction(
             id=uuid.uuid4(),
@@ -106,7 +121,7 @@ class WalletService:
             reference_id=reference_id,
             reference_type="withdrawal",
             amount=-amount,
-            balance_after=wallet.balance,
+            balance_after=new_balance,
         )
         return await self.transaction_repo.create(transaction)
 
