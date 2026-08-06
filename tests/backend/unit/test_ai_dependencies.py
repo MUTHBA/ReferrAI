@@ -32,7 +32,6 @@
 # -----------------------------------------------------------------------------
 
 import numpy as np
-import pytest
 
 
 def test_shap_is_importable() -> None:
@@ -69,15 +68,6 @@ def test_sentence_transformers_is_importable() -> None:
         ) from exc
 
 
-@pytest.mark.xfail(
-    reason="explainer.py's isinstance(shap_values, list) check does not "
-           "handle shap>=0.46.0's new (n_samples, n_features, n_classes) "
-           "array shape for classifier TreeExplainer output — causes "
-           "TypeError in abs(pair[1]) at explainer.py:89. See chat/commit "
-           "history around [this merge] for full root cause. Fix belongs "
-           "in explainer.py's shape-handling logic, not this test.",
-    strict=True,
-)
 def test_explainer_produces_real_shap_values_not_the_degraded_fallback() -> None:
     """Explainer.explain_tree() must return real SHAP values for a fitted model.
 

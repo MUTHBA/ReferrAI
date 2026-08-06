@@ -75,17 +75,27 @@ class Explainer:
 
             shap_values = explainer.shap_values(row)
 
-            # shap_values shape varies by model type:
-            #   - binary classifier (RF/GBM): list of two arrays → take class-1
-            #   - single-output regressor / IsolationForest: single 2-D array
+            # shap_values shape varies by shap version and model type:
+            #   - shap<0.46 binary classifier (RF/GBM): list of two
+            #     (n_samples, n_features) arrays, one per class → take class-1
+            #   - shap>=0.46 classifier: single (n_samples, n_features,
+            #     n_classes) array → take this sample's row and class-1
+            #   - single-output regressor / IsolationForest: single
+            #     (n_samples, n_features) array
             if isinstance(shap_values, list):
-                # Binary classifier: index 1 = positive-class (fraud / churn)
+                # Legacy binary classifier: index 1 = positive-class (fraud / churn)
                 values_1d = shap_values[1][0]
+            elif shap_values.ndim == 3:
+                # shap>=0.46 classifier output. Index 1 = positive-class,
+                # matching the legacy branch above; falls back to the only
+                # available class if there's just one.
+                class_idx = min(1, shap_values.shape[-1] - 1)
+                values_1d = shap_values[0, :, class_idx]
             else:
                 values_1d = shap_values[0]
 
             # Pair names with values, sort by |shap| descending, take top 3.
-            named = list(zip(feature_names, values_1d.tolist()))
+            named = list(zip(feature_names, np.asarray(values_1d).tolist()))
             named.sort(key=lambda pair: abs(pair[1]), reverse=True)
             return {name: float(val) for name, val in named[:3]}
 
