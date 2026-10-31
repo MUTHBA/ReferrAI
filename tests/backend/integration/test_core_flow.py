@@ -17,6 +17,7 @@
 # the DB-003 seed migration) that the in-memory test DB does not otherwise
 # have — SettingService.set() (PUT /settings/{key}) 404s on a key with no
 # existing row, so tests that update settings need it seeded first.
+# Change: admins are created via _create_admin (public sign-up is partner-only after the auth overhaul); added a sign-up-cannot-make-admin test; settings are pinned (not re-inserted); assertions follow the overhaul (withdrawal holds, {key,value} audit rows, commission-id ledger refs).
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -33,6 +34,7 @@ from app.models.commission import Commission
 from app.models.fraud_flag import FraudFlag
 from app.models.partner import Partner
 from app.models.referral import ReferralClick
+from app.core.security import hash_password
 from app.models.setting import Setting
 from app.models.user import User
 from app.models.wallet import Transaction, Wallet
@@ -55,6 +57,17 @@ async def _register(client: AsyncClient, email: str, password: str, role: str, n
     if name is not None:
         payload["name"] = name
     return await client.post("/api/v1/auth/register", json=payload)
+
+
+async def _create_admin(engine, email: str, password: str) -> uuid.UUID:
+    """Insert an admin directly: public sign-up only creates partners (admins come
+    from `python -m scripts.create_admin`), so the tests mirror that path."""
+    admin_id = uuid.uuid4()
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        session.add(User(id=admin_id, email=email, password_hash=hash_password(password), role="admin", is_active=True))
+        await session.commit()
+    return admin_id
 
 
 async def _login(client: AsyncClient, email: str, password: str):
@@ -146,8 +159,14 @@ async def settings_seeded(engine) -> dict:
     }
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
+        # The shared conftest already seeds every canonical setting, so pin the
+        # values this suite assumes instead of inserting duplicate rows.
         for key, value in values.items():
-            session.add(Setting(id=uuid.uuid4(), key=key, value=value, description=None))
+            existing = (await session.execute(select(Setting).where(Setting.key == key))).scalar_one_or_none()
+            if existing is None:
+                session.add(Setting(id=uuid.uuid4(), key=key, value=value, description=None))
+            else:
+                existing.value = value
         await session.commit()
     return values
 
@@ -162,9 +181,7 @@ async def registered_users(client: AsyncClient, engine, settings_seeded: dict) -
         looked up directly from the DB since RegisterResponse doesn't expose
         them.
     """
-    admin_resp = await _register(client, ADMIN_EMAIL, ADMIN_PASSWORD, "admin")
-    assert admin_resp.status_code == 201, admin_resp.text
-    admin_id = uuid.UUID(admin_resp.json()["id"])
+    admin_id = await _create_admin(engine, ADMIN_EMAIL, ADMIN_PASSWORD)
 
     admin_login = await _login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
     assert admin_login.status_code == 200, admin_login.text
@@ -216,23 +233,17 @@ async def recorded_conversion(client: AsyncClient, engine, registered_users: dic
 
 
 # ---------------------------------------------------------------------------
-# 1-3: Registration
+# 1-3: Registration (admins are created out-of-band, see _create_admin)
 # ---------------------------------------------------------------------------
 
 
-async def test_register_admin_creates_user(client: AsyncClient, engine) -> None:
-    resp = await _register(client, "admin1@flow.test", ADMIN_PASSWORD, "admin")
-    assert resp.status_code == 201, resp.text
-    body = resp.json()
-    assert body["role"] == "admin"
-    assert body["email"] == "admin1@flow.test"
-
-    user_id = uuid.UUID(body["id"])
+async def test_public_register_cannot_create_admin(client: AsyncClient, engine) -> None:
+    # Hardened sign-up (AI/auth overhaul): only partners can self-register.
+    resp = await _register(client, "admin1@flow.test", ADMIN_PASSWORD, "admin", name="Sneaky")
+    assert resp.status_code == 422, resp.text
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
-        user = await session.get(User, user_id)
-    assert user is not None
-    assert user.role == "admin"
+        assert (await session.execute(select(User).where(User.email == "admin1@flow.test"))).first() is None
 
 
 async def test_register_partner_creates_partner_and_wallet(client: AsyncClient, engine) -> None:
@@ -268,8 +279,8 @@ async def test_register_partner_without_name_returns_422(client: AsyncClient) ->
 # ---------------------------------------------------------------------------
 
 
-async def test_login_returns_jwt_for_admin_and_partner(client: AsyncClient) -> None:
-    await _register(client, "loginadmin@flow.test", ADMIN_PASSWORD, "admin")
+async def test_login_returns_jwt_for_admin_and_partner(client: AsyncClient, engine) -> None:
+    await _create_admin(engine, "loginadmin@flow.test", ADMIN_PASSWORD)
     await _register(client, "loginpartner@flow.test", PARTNER_PASSWORD, "partner", name="Login Partner")
 
     admin_login = await _login(client, "loginadmin@flow.test", ADMIN_PASSWORD)
@@ -332,8 +343,9 @@ async def test_admin_setting_update_persists_and_writes_audit_log(
         ).scalars().first()
 
     assert log is not None
-    assert log.old_value == 0.10
-    assert log.new_value == 0.15
+    # Audit rows store {"key", "value"} (admin audit shape after the overhaul).
+    assert log.old_value["value"] == 0.10
+    assert log.new_value["value"] == 0.15
     assert log.user_id == registered_users["admin_id"]
 
 
@@ -455,14 +467,13 @@ async def test_conversion_credits_wallet_and_writes_transaction(recorded_convers
         commission = (
             await session.execute(select(Commission).where(Commission.conversion_id == conversion_id))
         ).scalar_one()
-        # WalletService.credit() records the conversion's id as reference_id,
-        # not the commission's id — the ledger entry references the source
-        # event, and one conversion has exactly one commission.
+        # WalletService.credit() records the COMMISSION's id as reference_id
+        # (reference_type "commission"); one conversion has exactly one commission.
         transaction = (
             await session.execute(
                 select(Transaction)
                 .where(Transaction.wallet_id == wallet_id)
-                .where(Transaction.reference_id == conversion_id)
+                .where(Transaction.reference_id == commission.id)
             )
         ).scalar_one_or_none()
 
@@ -554,7 +565,9 @@ async def test_withdrawal_above_threshold_requires_manual_review_and_wallet_unch
 
     async with factory() as session:
         balance_after = (await session.get(Wallet, wallet_id)).balance
-    assert balance_after == balance_before, "balance must not change until an admin approves"
+    # Funds are HELD at request time (see wallet_service.py), so a pending request
+    # can never exceed the balance; the hold is released if the admin rejects it.
+    assert balance_after == balance_before - withdraw_amount
 
 
 async def test_active_fraud_flag_forces_manual_review_below_threshold(
@@ -609,7 +622,7 @@ async def test_active_fraud_flag_forces_manual_review_below_threshold(
 
     async with factory() as session:
         balance_after = (await session.get(Wallet, wallet_id)).balance
-    assert balance_after == balance_before
+    assert balance_after == balance_before - withdraw_amount  # held while pending review
 
 
 async def test_admin_approves_pending_withdrawal_debits_wallet_and_writes_audit_log(

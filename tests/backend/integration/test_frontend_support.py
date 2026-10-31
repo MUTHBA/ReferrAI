@@ -6,6 +6,7 @@
 # transaction labels, withdrawal context for payouts, commission search,
 # partner score lists (churn/ranking), the audit log, and change-password.
 # Change: conversions post referral_code instead of partner_id (partner is derived server-side).
+# Change: via_code is True because the conversion is posted with the seeded referral code (partner derived server-side).
 # -----------------------------------------------------------------------------
 
 from datetime import datetime, timezone
@@ -42,7 +43,7 @@ async def test_conversion_rows_include_commission_and_click(client: AsyncClient,
     assert row["commission_status"] == "approved"
     assert row["source"] == "newsletter"
     assert row["device_type"] == "mobile"
-    assert row["clicked_at"] is not None and row["via_code"] is False
+    assert row["clicked_at"] is not None and row["via_code"] is True
 
     # Same rows for the admin partner-detail page; partners can't use it.
     admin_rows = (
