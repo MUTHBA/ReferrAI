@@ -20,6 +20,7 @@
 # -----------------------------------------------------------------------------
 
 import argparse
+import random
 import sys
 from typing import Optional
 
@@ -78,20 +79,22 @@ def _section(title: str) -> None:
 # ---------------------------------------------------------------------------
 
 def step_register_admin(client: httpx.Client) -> None:
-    """POST /api/v1/auth/register — create the admin account (idempotent)."""
-    try:
-        resp = client.post(
-            "/api/v1/auth/register",
-            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD, "role": "admin"},
+    """Check the admin account exists.
+
+    Public registration only creates partners, so the admin must already exist:
+    docker-compose.yml bootstraps one from BOOTSTRAP_ADMIN_EMAIL/PASSWORD (the
+    defaults match ADMIN_EMAIL/ADMIN_PASSWORD below), or create it with
+        python -m scripts.create_admin --email admin@referrai.com --password 'Admin123!'
+    """
+    resp = client.post("/api/v1/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    if resp.status_code == 200:
+        _ok(f"Admin account present: {ADMIN_EMAIL}")
+    else:
+        _err(
+            f"Admin {ADMIN_EMAIL} cannot log in. Create it first:\n"
+            f"    docker compose exec backend python -m scripts.create_admin "
+            f"--email {ADMIN_EMAIL} --password '{ADMIN_PASSWORD}'"
         )
-        if resp.status_code == 201:
-            _ok(f"Admin registered: {ADMIN_EMAIL}")
-        elif resp.status_code == 409:
-            _ok(f"Admin already exists (skipping): {ADMIN_EMAIL}")
-        else:
-            _err(f"Unexpected {resp.status_code}: {resp.text}")
-    except Exception as exc:
-        _err(f"Admin registration request failed: {exc}")
 
 
 def step_login_admin(client: httpx.Client) -> Optional[str]:
@@ -199,24 +202,39 @@ def step_partner_setup(client: httpx.Client, partners: list[dict]) -> None:
             _err(f"{p['email']}: create referral code failed — {exc}")
 
 
+_BROWSER_UAS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 Version/17.5 Safari/605.1.15",
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/128.0 Mobile Safari/537.36",
+]
+_SOURCES = ["google", "newsletter", "instagram", None, "bing"]
+
+
+def _click(client: httpx.Client, slug: str, ip: str, ua: str, source) -> bool:
+    params = {"utm_source": source} if source else None
+    # X-Forwarded-For is honoured because uvicorn runs with --proxy-headers.
+    resp = client.get(f"/r/{slug}", params=params, headers={"user-agent": ua, "x-forwarded-for": ip}, follow_redirects=False)
+    return resp.status_code in (301, 302)
+
+
 def step_simulate_clicks(client: httpx.Client, partners: list[dict]) -> int:
-    """GET /r/{slug} × 10 per partner — simulates organic link traffic."""
+    """GET /r/{slug} — organic visitors for the first partners, plus one
+    deliberate bot burst on the last partner so the fraud queue has something
+    to show (bursts from one IP with a script user agent get flagged)."""
     total = 0
-    clicks_per_partner = 10
-    for p in partners:
-        slug = p.get("slug")
-        if not slug:
-            _err(f"{p['email']}: no slug — skipping clicks")
-            continue
-        for _ in range(clicks_per_partner):
-            try:
-                resp = client.get(f"/r/{slug}", follow_redirects=False)
-                if resp.status_code in (301, 302):
-                    total += 1
-                else:
-                    _err(f"GET /r/{slug}: unexpected status {resp.status_code}")
-            except Exception as exc:
-                _err(f"GET /r/{slug}: request failed — {exc}")
+    with_slug = [p for p in partners if p.get("slug")]
+    for idx, p in enumerate(with_slug):
+        is_bot_demo = idx == len(with_slug) - 1 and len(with_slug) > 1
+        for i in range(25 if is_bot_demo else 10):
+            if is_bot_demo:
+                ok = _click(client, p["slug"], "203.0.113.66", "python-requests/2.32", "coupon-site")
+            else:
+                ip = f"198.51.{random.randint(0, 255)}.{random.randint(1, 254)}"
+                ok = _click(client, p["slug"], ip, random.choice(_BROWSER_UAS), random.choice(_SOURCES))
+            total += int(ok)
+        if is_bot_demo:
+            _ok(f"{p['email']}: simulated a bot click burst (expect a fraud alert)")
     return total
 
 
@@ -252,7 +270,9 @@ def step_record_conversions(
         p = eligible[i % len(eligible)]
         payload: dict = {
             "partner_id": p["partner_id"],
-            "conversion_value": str(value),
+            # Order ID from the merchant; makes the call idempotent on re-runs.
+            "external_reference": f"demo-order-{i + 1}",
+            "conversion_value": f"{value:.2f}",
         }
         # Attach referral code when available for attribution
         if p.get("code"):
@@ -264,6 +284,9 @@ def step_record_conversions(
                 json=payload,
                 headers=admin_headers,
             )
+            if resp.status_code == 409:
+                _ok(f"Conversion demo-order-{i + 1} already recorded (skipping)")
+                continue
             resp.raise_for_status()
             recorded += 1
             _ok(f"Conversion ${value:.2f} → {p['email']}")
@@ -376,8 +399,8 @@ def main() -> None:
     client = httpx.Client(base_url=BASE_URL, timeout=DEFAULT_TIMEOUT)
 
     try:
-        # Step 1 — Register admin (idempotent — 409 is OK)
-        _section("Step 1: Register admin user")
+        # Step 1 — Admin must already exist (bootstrapped by docker-compose)
+        _section("Step 1: Check admin user")
         step_register_admin(client)
 
         # Step 2 — Admin login; abort if token cannot be obtained

@@ -1,33 +1,29 @@
 # -----------------------------------------------------------------------------
 # backend/app/services/partner_service.py
 #
-# Business logic for partner and tier management (PRT-001 through PRT-003).
-# get_partner() enforces the access rule: admins can fetch any partner,
-# partners can only fetch their own. get_own_partner() resolves a partner
-# by the caller's user_id — needed because a partner's JWT only carries
-# user_id (sub), not their partner_id, so the frontend can't call
-# get_partner(partner_id) for "my own profile" without already knowing it.
-# update_partner() splits allowed fields by role the same way.
-# evaluate_tier_upgrade() is called after a commission is earned — it only
-# upgrades, never downgrades, and assigns the highest qualifying tier by
-# rank_order descending.
-# Added list_partners_ranked() for AI-RANK-002: returns all partners sorted
-# by their latest 'ranking' ai_score, with the score value for display.
-# AI-CHURN-004: added get_latest_score_by_partner() — batch fetch of the
-# latest score of a given type per partner, used to populate churn_score on
-# the partner list response without a per-row query.
+# Partner profiles (PRT-001), tier CRUD (PRT-002) and automatic tier upgrades
+# (PRT-003). Admin-facing lists exclude synthetic partners and are enriched
+# with each partner's latest AI scores (churn, fraud, ranking) and average
+# conversion quality. Every admin mutation writes an audit_logs row.
+#
+# evaluate_tier_upgrade() only FLUSHES — it runs inside the conversion
+# transaction, which commits once. Upgrades are never retroactive: the
+# conversion that triggers an upgrade has already been priced at the old tier.
 # -----------------------------------------------------------------------------
 
 import uuid
+from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ai_score import AIScore
+from app.models.commission import Commission
 from app.models.partner import Partner, PartnerTier
+from app.repositories.ai_score_repository import AIScoreRepository
 from app.repositories.partner_repository import PartnerRepository
 from app.schemas.partner import AdminPartnerUpdateRequest, PartnerSelfUpdateRequest
+from app.services.audit_log_service import AuditLogService
 
 
 class PartnerNotFoundError(Exception):
@@ -49,15 +45,27 @@ class TierRankConflictError(Exception):
         super().__init__(f"rank_order {rank_order} is already in use")
 
 
+class TierInUseError(Exception):
+    def __init__(self, tier_id: uuid.UUID, partners: int) -> None:
+        super().__init__(
+            f"Tier {tier_id} is assigned to {partners} partner(s) or referenced by commissions; "
+            "move them to another tier first"
+        )
+
+
+class InvalidTierRateError(Exception):
+    pass
+
+
 class PartnerService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = PartnerRepository(session)
+        self.scores = AIScoreRepository(session)
 
     # ------------------------------------------------------------------ #
     # Partner profile (PRT-001)
     # ------------------------------------------------------------------ #
-
     async def get_partner(
         self, partner_id: uuid.UUID, requesting_user_id: uuid.UUID, requesting_role: str
     ) -> Partner:
@@ -74,110 +82,93 @@ class PartnerService:
             raise PartnerNotFoundError(user_id)
         return partner
 
-    async def list_partners(self) -> list[Partner]:
-        result = await self.session.execute(
-            select(Partner).order_by(Partner.created_at.desc())
-        )
+    async def list_partners(
+        self, search: Optional[str] = None, status: Optional[str] = None
+    ) -> list[Partner]:
+        stmt = select(Partner).where(Partner.is_synthetic == False)  # noqa: E712
+        if search:
+            like = f"%{search.lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(Partner.name).like(like),
+                    func.lower(Partner.email).like(like),
+                    func.lower(func.coalesce(Partner.business_name, "")).like(like),
+                )
+            )
+        if status:
+            stmt = stmt.where(Partner.status == status)
+        result = await self.session.execute(stmt.order_by(Partner.created_at.desc()))
         return list(result.scalars().all())
 
-    async def list_partners_ranked(self) -> list[tuple[Partner, Optional[float]]]:
-        """Return all partners sorted by latest ranking score descending (AI-RANK-002).
+    async def score_maps(self) -> dict[str, dict[uuid.UUID, Optional[float]]]:
+        """Latest partner-level scores, keyed by score name, for list enrichment."""
+        return {
+            "rank_score": await self.scores.latest_by_entity("ranking"),
+            "churn_score": await self.scores.latest_by_entity("churn_risk"),
+            "fraud_score": await self.scores.latest_by_entity("fraud_risk"),
+            "quality_score": await self.scores.partner_quality_averages(),
+        }
 
-        Partners without a ranking score sort last (nullslast). The rank score is
-        returned alongside each Partner so the route can populate PartnerResponse.rank_score
-        without an additional per-partner query.
-        """
-        rank_subq = (
-            select(AIScore.score)
-            .where(AIScore.entity_id == Partner.id)
-            .where(AIScore.entity_type == "partner")
-            .where(AIScore.score_type == "ranking")
-            .where(AIScore.is_synthetic == False)  # noqa: E712
-            .order_by(AIScore.calculated_at.desc())
-            .limit(1)
-            .correlate(Partner)
-            .scalar_subquery()
-        )
-        result = await self.session.execute(
-            select(Partner, rank_subq.label("rank_score"))
-            .order_by(rank_subq.desc().nullslast())
-        )
-        return [
-            (row.Partner, float(row.rank_score) if row.rank_score is not None else None)
-            for row in result
-        ]
+    async def get_latest_score_by_partner(self, score_type: str) -> dict[uuid.UUID, Optional[float]]:
+        return await self.scores.latest_by_entity(score_type)
 
-    async def get_latest_score_by_partner(self, score_type: str) -> dict[uuid.UUID, float]:
-        """Return {partner_id: score} for the latest score of *score_type* per partner.
-
-        Uses a two-step subquery: first find the latest calculated_at per entity,
-        then join back to retrieve the score at that timestamp. Excludes synthetic
-        rows per dashboard query discipline.
-        """
-        ts_subq = (
-            select(
-                AIScore.entity_id,
-                func.max(AIScore.calculated_at).label("max_at"),
-            )
-            .where(AIScore.score_type == score_type)
-            .where(AIScore.is_synthetic == False)  # noqa: E712
-            .group_by(AIScore.entity_id)
-            .subquery()
-        )
-        result = await self.session.execute(
-            select(AIScore.entity_id, AIScore.score)
-            .join(
-                ts_subq,
-                (AIScore.entity_id == ts_subq.c.entity_id)
-                & (AIScore.calculated_at == ts_subq.c.max_at),
-            )
-            .where(AIScore.score_type == score_type)
-            .where(AIScore.is_synthetic == False)  # noqa: E712
-        )
-        return {row.entity_id: float(row.score) for row in result}
+    async def tier_names(self) -> dict[uuid.UUID, str]:
+        return {t.id: t.name for t in await self.list_tiers()}
 
     async def update_partner_as_admin(
-        self, partner_id: uuid.UUID, data: AdminPartnerUpdateRequest
+        self,
+        partner_id: uuid.UUID,
+        data: AdminPartnerUpdateRequest,
+        admin_id: Optional[uuid.UUID] = None,
+        ip_address: Optional[str] = None,
     ) -> Partner:
         partner = await self.repo.get_by_id(partner_id)
         if partner is None:
             raise PartnerNotFoundError(partner_id)
+        if data.tier_id is not None and await self.repo.get_tier_by_id(data.tier_id) is None:
+            raise TierNotFoundError(data.tier_id)
 
-        if data.tier_id is not None:
-            tier = await self.repo.get_tier_by_id(data.tier_id)
-            if tier is None:
-                raise TierNotFoundError(data.tier_id)
-
-        for field, value in data.model_dump(exclude_none=True).items():
+        changes = data.model_dump(exclude_none=True)
+        old = {k: getattr(partner, k) for k in changes}
+        for field, value in changes.items():
             setattr(partner, field, value)
-
         await self.session.flush()
+
+        if changes:
+            action = "partner.status_changed" if "status" in changes else "partner.updated"
+            await AuditLogService(self.session).log(
+                user_id=admin_id,
+                action=action,
+                entity_type="partner",
+                entity_id=partner.id,
+                old_value=old,
+                new_value=changes,
+                ip_address=ip_address,
+            )
         await self.session.commit()
         return partner
 
-    async def update_partner_as_self(
-        self, user_id: uuid.UUID, data: PartnerSelfUpdateRequest
-    ) -> Partner:
+    async def update_partner_as_self(self, user_id: uuid.UUID, data: PartnerSelfUpdateRequest) -> Partner:
         partner = await self.repo.get_by_user_id(user_id)
         if partner is None:
             raise PartnerNotFoundError(user_id)
-
         for field, value in data.model_dump(exclude_none=True).items():
             setattr(partner, field, value)
-
-        await self.session.flush()
         await self.session.commit()
         return partner
 
     # ------------------------------------------------------------------ #
     # Tier CRUD (PRT-002)
     # ------------------------------------------------------------------ #
-
     async def list_tiers(self) -> list[PartnerTier]:
-        result = await self.session.execute(
-            select(PartnerTier).order_by(PartnerTier.rank_order)
-        )
+        result = await self.session.execute(select(PartnerTier).order_by(PartnerTier.rank_order))
         return list(result.scalars().all())
+
+    async def _rank_taken(self, rank_order: int, exclude_id: Optional[uuid.UUID] = None) -> bool:
+        stmt = select(PartnerTier.id).where(PartnerTier.rank_order == rank_order)
+        if exclude_id:
+            stmt = stmt.where(PartnerTier.id != exclude_id)
+        return (await self.session.execute(stmt)).first() is not None
 
     async def create_tier(
         self,
@@ -187,11 +178,10 @@ class PartnerService:
         min_revenue_contribution,
         commission_type: str,
         commission_value,
+        admin_id: Optional[uuid.UUID] = None,
+        ip_address: Optional[str] = None,
     ) -> PartnerTier:
-        existing = await self.session.execute(
-            select(PartnerTier).where(PartnerTier.rank_order == rank_order)
-        )
-        if existing.scalar_one_or_none() is not None:
+        if await self._rank_taken(rank_order):
             raise TierRankConflictError(rank_order)
 
         tier = PartnerTier(
@@ -205,73 +195,114 @@ class PartnerService:
         )
         self.session.add(tier)
         await self.session.flush()
+        await AuditLogService(self.session).log(
+            user_id=admin_id,
+            action="tier.created",
+            entity_type="partner_tier",
+            entity_id=tier.id,
+            new_value={
+                "name": name,
+                "rank_order": rank_order,
+                "commission_type": commission_type,
+                "commission_value": commission_value,
+            },
+            ip_address=ip_address,
+        )
         await self.session.commit()
         return tier
 
-    async def update_tier(self, tier_id: uuid.UUID, data) -> PartnerTier:
+    async def update_tier(
+        self, tier_id: uuid.UUID, data, admin_id: Optional[uuid.UUID] = None, ip_address: Optional[str] = None
+    ) -> PartnerTier:
         tier = await self.repo.get_tier_by_id(tier_id)
         if tier is None:
             raise TierNotFoundError(tier_id)
 
         updates = data.model_dump(exclude_none=True)
-        if "rank_order" in updates:
-            conflict = await self.session.execute(
-                select(PartnerTier).where(
-                    PartnerTier.rank_order == updates["rank_order"],
-                    PartnerTier.id != tier_id,
-                )
-            )
-            if conflict.scalar_one_or_none() is not None:
-                raise TierRankConflictError(updates["rank_order"])
+        if "rank_order" in updates and await self._rank_taken(updates["rank_order"], tier_id):
+            raise TierRankConflictError(updates["rank_order"])
 
+        new_type = updates.get("commission_type", tier.commission_type)
+        new_value = Decimal(str(updates.get("commission_value", tier.commission_value)))
+        if new_type in ("percentage", "tier_based") and not (Decimal("0") < new_value <= Decimal("1")):
+            raise InvalidTierRateError(
+                "commission_value for percentage tiers must be a fraction between 0 and 1 (e.g. 0.10 for 10%)"
+            )
+
+        old = {k: getattr(tier, k) for k in updates}
         for field, value in updates.items():
             setattr(tier, field, value)
-
         await self.session.flush()
+        await AuditLogService(self.session).log(
+            user_id=admin_id,
+            action="tier.updated",
+            entity_type="partner_tier",
+            entity_id=tier.id,
+            old_value=old,
+            new_value=updates,
+            ip_address=ip_address,
+        )
         await self.session.commit()
         return tier
 
-    async def delete_tier(self, tier_id: uuid.UUID) -> None:
+    async def delete_tier(
+        self, tier_id: uuid.UUID, admin_id: Optional[uuid.UUID] = None, ip_address: Optional[str] = None
+    ) -> None:
         tier = await self.repo.get_tier_by_id(tier_id)
         if tier is None:
             raise TierNotFoundError(tier_id)
+
+        partners = (
+            await self.session.execute(select(func.count()).where(Partner.tier_id == tier_id))
+        ).scalar_one()
+        commissions = (
+            await self.session.execute(select(func.count()).where(Commission.tier_id == tier_id))
+        ).scalar_one()
+        if partners or commissions:
+            raise TierInUseError(tier_id, int(partners))
+
+        await AuditLogService(self.session).log(
+            user_id=admin_id,
+            action="tier.deleted",
+            entity_type="partner_tier",
+            entity_id=tier.id,
+            old_value={"name": tier.name, "rank_order": tier.rank_order},
+            ip_address=ip_address,
+        )
         await self.session.delete(tier)
         await self.session.commit()
 
     # ------------------------------------------------------------------ #
     # Automatic tier upgrade (PRT-003)
     # ------------------------------------------------------------------ #
+    async def evaluate_tier_upgrade(self, partner: Partner) -> Optional[PartnerTier]:
+        """Move the partner to the highest tier they now qualify for, if it is
+        above their current tier. Never downgrades. Flushes only."""
+        tiers = await self.list_tiers()
+        current_rank = 0
+        if partner.tier_id:
+            current = next((t for t in tiers if t.id == partner.tier_id), None)
+            current_rank = current.rank_order if current else 0
 
-    async def evaluate_tier_upgrade(self, partner_id: uuid.UUID) -> Optional[PartnerTier]:
-        partner = await self.repo.get_by_id(partner_id)
-        if partner is None:
-            return None
-
-        tiers_result = await self.session.execute(
-            select(PartnerTier).order_by(PartnerTier.rank_order.desc())
-        )
-        tiers = list(tiers_result.scalars().all())
-
-        for tier in tiers:
-            qualifies = (
+        best: Optional[PartnerTier] = None
+        for tier in tiers:  # ascending rank_order
+            if (
                 partner.total_referral_count >= tier.min_referral_count
                 and partner.total_revenue_contribution >= tier.min_revenue_contribution
-            )
-            if not qualifies:
-                continue
+            ):
+                best = tier
+        if best is None or best.rank_order <= current_rank:
+            return None
 
-            current_rank = 0
-            if partner.tier_id:
-                current_tier = await self.repo.get_tier_by_id(partner.tier_id)
-                if current_tier:
-                    current_rank = current_tier.rank_order
-
-            if tier.rank_order > current_rank:
-                partner.tier_id = tier.id
-                await self.session.flush()
-                await self.session.commit()
-                return tier
-
-            break
-
-        return None
+        old_tier_id = partner.tier_id
+        partner.tier_id = best.id
+        await self.session.flush()
+        await AuditLogService(self.session).log(
+            user_id=None,
+            action="partner.tier_upgraded",
+            entity_type="partner",
+            entity_id=partner.id,
+            old_value={"tier_id": old_tier_id},
+            new_value={"tier_id": best.id, "tier_name": best.name},
+        )
+        return best

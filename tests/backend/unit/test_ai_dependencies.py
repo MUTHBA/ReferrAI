@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # tests/backend/unit/test_ai_dependencies.py
 #
-# Regression guard for backend/requirements-ml.txt.
+# Regression guard for backend/requirements-ml.txt (+ requirements-embeddings.txt).
 #
 # On 2026-07-07, main's commit 3daf8f0 intentionally excluded shap and
 # sentence-transformers from requirements-ml.txt to sidestep two Docker build
@@ -13,6 +13,10 @@
 # small and CUDA-free) — so both packages ship in the Docker image and power
 # real features: SHAP explanations (AI-XAI-001, BRD 8.7) and partner
 # discovery embeddings (AI-DISC-001).
+#
+# NOTE (AI overhaul): sentence-transformers now lives in requirements-embeddings.txt, which
+# the Dockerfile installs by default after CPU-only torch; the import checks below still
+# apply to the Docker image.
 #
 # Both features are wrapped in broad except-clauses and degrade gracefully
 # when the packages are unavailable (Explainer.explain_tree() returns {},
@@ -29,6 +33,7 @@
 # `pip install -r requirements-test.txt` venv does not include them by
 # design (keeps the rest of the suite fast/lightweight) and will correctly
 # fail these tests there — that's expected, not itself a regression.
+# Change: SHAP test now exercises app.ai.explain (Explainer class was replaced).
 # -----------------------------------------------------------------------------
 
 import numpy as np
@@ -68,45 +73,44 @@ def test_sentence_transformers_is_importable() -> None:
         ) from exc
 
 
-def test_explainer_produces_real_shap_values_not_the_degraded_fallback() -> None:
-    """Explainer.explain_tree() must return real SHAP values for a fitted model.
+def test_explain_produces_real_shap_values_not_the_degraded_fallback() -> None:
+    """app.ai.explain must return real SHAP values for a fitted tree model.
 
-    explain_tree() wraps every failure (including shap being unimportable)
-    in a broad except and returns {} — the same empty dict used when a
-    model file is simply missing. Fitting a tiny model in-memory here (no
-    dependency on the repo's pretrained .joblib files, which aren't present
-    in dev/test environments) proves shap is not just importable but
-    functioning end-to-end — so a regression here fails on real, non-empty
-    content, not just an import check.
+    explain._shap_contributions() returns None on ANY failure (including shap
+    being unimportable) and explain() then silently falls back to occlusion,
+    so a broken shap would not fail any endpoint. Fitting a tiny pipeline
+    in-memory here (no dependency on trained model files) proves shap works
+    end-to-end, including the shap>=0.46 3-D (rows, features, classes) output.
+    (Replaces the old Explainer.explain_tree() test: that class was replaced by
+    app/ai/explain.py in the AI overhaul; the SHAP-shape guard itself is kept.)
     """
+    import pandas as pd
     from sklearn.ensemble import RandomForestClassifier
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
 
-    from app.ai.explainability.explainer import Explainer
+    from app.ai import explain, registry
 
     feature_names = ["clicks_last_hour", "unique_devices", "account_age_days"]
-    X = np.array(
-        [
-            [1, 1, 400],
-            [2, 1, 350],
-            [50, 1, 2],
-            [45, 1, 1],
-        ]
+    X = pd.DataFrame(
+        [[1, 1, 400], [2, 1, 350], [50, 1, 2], [45, 1, 1]],
+        columns=feature_names,
     )
     y = np.array([0, 0, 1, 1])
-
-    model = RandomForestClassifier(n_estimators=10, random_state=0)
-    model.fit(X, y)
-
-    result = Explainer().explain_tree(
-        model=model,
-        features={"clicks_last_hour": 48, "unique_devices": 1, "account_age_days": 3},
-        feature_names=feature_names,
+    pipeline = Pipeline(
+        [("pre", StandardScaler()), ("model", RandomForestClassifier(n_estimators=10, random_state=0))]
+    ).fit(X, y)
+    bundle = registry.ModelBundle(
+        name="quality", pipeline=pipeline, meta={"features": feature_names, "version": "test"}, mtime=0.0
     )
 
-    assert result != {}, (
-        "Explainer.explain_tree() returned the degraded-fallback empty dict "
-        "for a model that was fit and passed in directly — shap is either "
-        "not importable or not functioning correctly"
+    result = explain._shap_contributions(
+        bundle, {"clicks_last_hour": 48, "unique_devices": 1, "account_age_days": 3}, scale=1.0
     )
-    assert all(name in feature_names for name in result), "unexpected feature name in SHAP output"
+
+    assert result, (
+        "explain._shap_contributions() returned None/empty for a model that was fit and "
+        "passed in directly - shap is either not importable or not functioning correctly"
+    )
+    assert set(result) <= set(feature_names), "unexpected feature name in SHAP output"
     assert all(isinstance(v, float) for v in result.values())

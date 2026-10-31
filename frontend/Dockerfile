@@ -23,4 +23,6 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+# `npm install` again at start: the node_modules volume survives rebuilds, so
+# this picks up dependencies added since the volume was created.
+CMD ["sh", "-c", "npm install --no-audit --no-fund && npm run dev"]

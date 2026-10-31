@@ -41,8 +41,13 @@ services:
     environment:
       # Override DATABASE_URL so the hostname is the compose service name "db"
       DATABASE_URL: ${DATABASE_URL}
+      # Dev/demo only: create this admin on startup if missing (public sign-up
+      # only creates partners). Remove or change for anything real.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@referrai.com}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Admin123!}
     volumes:
       - ./backend:/app              # hot-reload: code changes reflected immediately
+      - model_data:/models          # trained AI models
     ports:
       - "8000:8000"                 # direct access during development
     depends_on:
@@ -90,5 +95,6 @@ services:
         condition: service_started
 
 volumes:
+  model_data:           # trained AI models (survive rebuilds)
   postgres_data:        # persists DB data across container restarts
   frontend_node_modules: # isolates node_modules from host bind-mount

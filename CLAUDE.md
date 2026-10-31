@@ -51,14 +51,16 @@ cd backend && pip install -r requirements.txt
 # Run development server
 uvicorn app.main:app --reload --port 8000
 
-# Run all tests
-pytest
+# Run all tests (needs an empty PostgreSQL database — tests wipe it)
+#   createdb referrai_test   (or: docker compose up -d db)
+#   export TEST_DATABASE_URL=postgresql+asyncpg://USER:PASS@localhost:5432/referrai_test
+PYTHONPATH=backend pytest   # from the repo root
 
 # Run a single test file
-pytest tests/test_referral.py
+pytest tests/backend/integration/test_referral_endpoints.py
 
 # Run a single test
-pytest tests/test_referral.py::test_create_referral_link
+pytest tests/backend/integration/test_business_rules.py::test_concurrent_withdrawals_cannot_overdraw
 
 # Apply database migrations
 alembic upgrade head
@@ -68,9 +70,21 @@ alembic revision --autogenerate -m "description"
 
 # Rollback one migration
 alembic downgrade -1
+
+# Create an admin (public sign-up only creates partners)
+python -m scripts.create_admin --email admin@example.com --password 'S3cure-pass'
+
+# Load ~6 months of demo activity into an EMPTY database (admin@referrai.io / Admin123!,
+# partners <name>@demo.referrai.io / Partner123!)
+python -m scripts.demo_history
+
+# Train the AI models (saved to AI_MODEL_DIR, default backend/models)
+python -m app.ai.train                 # all models
+python -m app.ai.train --if-missing    # what the container runs on start
 ```
 
 ### Frontend
+Pages live in `src/features/{auth,partner,admin}`; shared pieces in `src/components/ui` (shadcn-style primitives) and `src/components/app` (app shell, ledger strip, charts, AI score badge and "why" bars). All API calls are in `src/lib/endpoints.js`; formatting in `src/lib/format.js`. Visual rules: `docs/design/DESIGN.md`.
 ```bash
 # Install dependencies
 cd frontend && npm install
@@ -103,6 +117,8 @@ docker-compose logs -f backend
 
 **AI as internal package with graceful degradation:** The AI module (`backend/app/ai/`) is imported directly by the backend, not a separate service. AI scoring is triggered as background tasks after conversions are recorded. If any AI model fails, the exception is caught, `null` scores are stored, and the core platform continues operating uninterrupted. Never block referral tracking or commission calculation on AI availability.
 
+**One feature function per model:** `app/ai/features.py` defines the inputs for quality, fraud and churn. Training (`app/ai/train.py`, on the seeded synthetic world in `app/ai/synthetic.py`) and live scoring (`app/services/ai_service.py`) both call these functions — never compute a model input anywhere else. Background tasks get IDs only and open their own DB session (`ai_service.run_in_new_session`).
+
 **Config-driven business rules:** Commission percentages, tier thresholds, withdrawal limits, fraud thresholds, and churn thresholds are all stored in the `settings` table and loaded at runtime. Never hardcode these values.
 
 **Audit everything admin-side:** Every settings change and every admin action (payout approval, fraud flag review) must write a row to `audit_logs`.
@@ -124,7 +140,10 @@ See `.env.example` for required variables. Key ones:
 - `SECRET_KEY` — JWT signing secret
 - `ALGORITHM` — JWT algorithm (default: HS256)
 - `ACCESS_TOKEN_EXPIRE_MINUTES`
-- `FRAUD_ALERT_THRESHOLD` — default score threshold (overridden by settings table)
+- `AI_MODEL_DIR` — where trained models are stored (Docker: `/models` volume)
+- `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` — optional dev/demo admin created on startup
+- `ENV=production` makes the app refuse to start with the default `SECRET_KEY`
+- Business thresholds are NOT env vars: they live in the `settings` table, defined in `app/core/setting_definitions.py`
 
 ## Reference Documents
 

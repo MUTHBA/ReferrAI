@@ -151,8 +151,10 @@ def downgrade() -> None:
         )
     )
 
+    # Only remove Bronze if nothing references it any more; otherwise the FK
+    # from partners/commissions would make the downgrade fail.
     op.execute(
-        partner_tiers_table.delete().where(
-            partner_tiers_table.c.name == 'Bronze'
-        )
+        "DELETE FROM partner_tiers WHERE name = 'Bronze' "
+        "AND NOT EXISTS (SELECT 1 FROM partners WHERE tier_id = partner_tiers.id) "
+        "AND NOT EXISTS (SELECT 1 FROM commissions WHERE tier_id = partner_tiers.id)"
     )

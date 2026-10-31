@@ -49,7 +49,10 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required in .env}
       SECRET_KEY:   ${SECRET_KEY:?SECRET_KEY is required in .env}
-    # No bind-mount — image is immutable in production
+      ENV: production
+    # No source bind-mount — image is immutable in production. Models persist in a volume.
+    volumes:
+      - model_data:/models
     depends_on:
       db:
         condition: service_healthy
@@ -62,7 +65,8 @@ services:
     # Run migrations then start with 4 workers (no --reload in production)
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
+             python -m app.ai.train --if-missing &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips='*'"
 
   # ── React static build + nginx ────────────────────────────────────────────
   # Dockerfile.prod runs `npm run build` and copies dist/ into an nginx:alpine
@@ -79,4 +83,5 @@ services:
         condition: service_healthy
 
 volumes:
+  model_data:           # trained AI models (survive rebuilds)
   postgres_data:                 # persists DB data across container restarts and updates

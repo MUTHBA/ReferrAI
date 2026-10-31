@@ -22,7 +22,8 @@ class FraudFlagResponse(BaseModel):
     partner_id: uuid.UUID
     partner_name: str
     ai_score_id: uuid.UUID
-    score: float
+    score: Optional[float] = None
+    referral_click_id: Optional[uuid.UUID] = None
     explanation: Optional[str] = None
     contributing_factors: Optional[Dict[str, Any]] = None
     status: str
@@ -33,3 +34,4 @@ class FraudFlagResponse(BaseModel):
 
 class FraudFlagReviewRequest(BaseModel):
     status: Literal["confirmed", "dismissed"]
+    notes: Optional[str] = None

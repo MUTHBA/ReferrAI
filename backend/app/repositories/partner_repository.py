@@ -26,9 +26,18 @@ class PartnerRepository:
         await self.session.flush()
         return partner
 
-    async def get_by_id(self, partner_id: uuid.UUID) -> Optional[Partner]:
+    async def get_by_id(
+        self, partner_id: uuid.UUID, for_update: bool = False
+    ) -> Optional[Partner]:
+        stmt = select(Partner).where(Partner.id == partner_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_base_tier(self) -> Optional[PartnerTier]:
         result = await self.session.execute(
-            select(Partner).where(Partner.id == partner_id)
+            select(PartnerTier).order_by(PartnerTier.rank_order.asc()).limit(1)
         )
         return result.scalar_one_or_none()
 

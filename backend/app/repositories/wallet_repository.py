@@ -12,6 +12,7 @@
 # atomic UPDATE ... WHERE balance >= :amount, so a withdrawal debit can never
 # race against a concurrent debit on the same wallet and push balance
 # negative — see WalletService.debit() for the full rationale.
+# Change: debit_if_sufficient() gained count_as_withdrawn / reduce_earned flags so it fits holds and reversals.
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -33,14 +34,25 @@ class WalletRepository:
         await self.session.flush()
         return wallet
 
-    async def get_by_partner_id(self, partner_id: uuid.UUID) -> Optional[Wallet]:
-        result = await self.session.execute(
-            select(Wallet).where(Wallet.partner_id == partner_id)
-        )
+    async def get_by_partner_id(
+        self, partner_id: uuid.UUID, for_update: bool = False
+    ) -> Optional[Wallet]:
+        """Fetch a partner's wallet. Pass for_update=True before mutating the
+        balance: it takes a row lock (SELECT ... FOR UPDATE) so concurrent
+        credits/debits serialise instead of overwriting each other."""
+        stmt = select(Wallet).where(Wallet.partner_id == partner_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def debit_if_sufficient(
-        self, wallet_id: uuid.UUID, amount: Decimal
+        self,
+        wallet_id: uuid.UUID,
+        amount: Decimal,
+        *,
+        count_as_withdrawn: bool = True,
+        reduce_earned: bool = False,
     ) -> Optional[tuple[Decimal, Decimal]]:
         """Atomically debit `amount` from balance and add it to
         total_withdrawn — but only if balance >= amount at the moment the
@@ -59,14 +71,20 @@ class WalletRepository:
         the balance was insufficient at the moment of the update — the
         caller should treat None the same as the old "balance < amount"
         check.
+
+        count_as_withdrawn=False is for withdrawal HOLDS (the money is only
+        counted in total_withdrawn once the withdrawal is approved);
+        reduce_earned=True is for commission reversals (also lowers total_earned).
         """
+        values = {"balance": Wallet.balance - amount}
+        if count_as_withdrawn:
+            values["total_withdrawn"] = Wallet.total_withdrawn + amount
+        if reduce_earned:
+            values["total_earned"] = Wallet.total_earned - amount
         result = await self.session.execute(
             update(Wallet)
             .where(Wallet.id == wallet_id, Wallet.balance >= amount)
-            .values(
-                balance=Wallet.balance - amount,
-                total_withdrawn=Wallet.total_withdrawn + amount,
-            )
+            .values(**values)
             .returning(Wallet.balance, Wallet.total_withdrawn)
         )
         row = result.first()

@@ -1,0 +1,197 @@
+/* -----------------------------------------------------------------------------
+ * frontend/src/index.css
+ *
+ * Global styles and design tokens (Tailwind CSS v4). Colour values come from
+ * docs/design/DESIGN.md (Stitch exports in docs/design/stitch-exports/).
+ *
+ * Two layers of tokens:
+ *   1. Brand palette (canvas, line, ink, jade, cobalt, amber, rose, ...) used
+ *      directly in components: bg-canvas, border-line, text-jade, ...
+ *   2. shadcn/ui semantic tokens (background, foreground, primary, muted, ...)
+ *      mapped onto the palette so stock shadcn components match the brand.
+ * Dark mode: the `.dark` class on <html> (see ThemeProvider) swaps the values.
+ * -------------------------------------------------------------------------- */
+
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --canvas: #f2f4f1;
+  --surface: #ffffff;
+  --line: #dde2dc;
+  --ink: #18222f;
+  --ink-panel: #18232d;
+  --text: #101d28;
+  --muted-text: #5e6b78;
+  --jade: #0f6e56;
+  --jade-strong: #005440;
+  --jade-soft: #e3f2ec;
+  --jade-bright: #a0f3d4;
+  --cobalt: #3557c9;
+  --cobalt-soft: #e8edfb;
+  --amber: #b7791f;
+  --amber-soft: #fbf1e1;
+  --rose: #b83a2e;
+  --rose-soft: #fdf3f2;
+  /* Chart series (validated for colour-blind separation and chroma). */
+  --chart-1: #0a7d5c;
+  --chart-2: #3557c9;
+  --chart-grid: #e8ece7;
+
+  /* shadcn semantic tokens */
+  --background: var(--canvas);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface);
+  --popover-foreground: var(--text);
+  --primary: var(--jade);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface);
+  --secondary-foreground: var(--ink);
+  --muted: #e9ece8;
+  --muted-foreground: var(--muted-text);
+  --accent: #e9ece8;
+  --accent-foreground: var(--ink);
+  --destructive: var(--rose);
+  --destructive-foreground: #ffffff;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--ink);
+  --radius: 10px;
+}
+
+.dark {
+  --canvas: #111a22;
+  --surface: #18232d;
+  --line: #2a3742;
+  --ink: #e6ecef;
+  --ink-panel: #0c141a;
+  --text: #e6ecef;
+  --muted-text: #9aa8b4;
+  --jade: #2a9a7c;
+  --jade-strong: #43b593;
+  --jade-soft: #143a31;
+  --jade-bright: #a0f3d4;
+  --cobalt: #6d88e3;
+  --cobalt-soft: #1c2747;
+  --amber: #d69a3d;
+  --amber-soft: #3a2c14;
+  --rose: #e06a5d;
+  --rose-soft: #3b1d1a;
+  --chart-1: #2a9a7c;
+  --chart-2: #6d88e3;
+  --chart-grid: #24313c;
+
+  --muted: #1e2b36;
+  --accent: #1e2b36;
+  --ring: #e6ecef;
+  --secondary: var(--surface);
+  --secondary-foreground: var(--text);
+}
+
+@theme inline {
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-panel: var(--ink-panel);
+  --color-text: var(--text);
+  --color-muted-text: var(--muted-text);
+  --color-jade: var(--jade);
+  --color-jade-strong: var(--jade-strong);
+  --color-jade-soft: var(--jade-soft);
+  --color-jade-bright: var(--jade-bright);
+  --color-cobalt: var(--cobalt);
+  --color-cobalt-soft: var(--cobalt-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-rose: var(--rose);
+  --color-rose-soft: var(--rose-soft);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-panel: 10px;
+  --radius-control: 6px;
+
+  /* Type scale from DESIGN.md */
+  --text-display: 32px;
+  --text-display--line-height: 38px;
+  --text-title: 28px;
+  --text-title--line-height: 36px;
+  --text-section: 20px;
+  --text-section--line-height: 28px;
+  --text-body: 15px;
+  --text-body--line-height: 22px;
+  --text-caption: 13px;
+  --text-caption--line-height: 18px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--canvas);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 22px;
+  }
+  /* Money and counts line up in columns. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background: var(--jade);
+    color: #ffffff;
+  }
+  :focus-visible {
+    outline: 2px solid var(--jade);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

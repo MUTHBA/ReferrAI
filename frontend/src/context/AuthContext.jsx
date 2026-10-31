@@ -1,17 +1,15 @@
 // -----------------------------------------------------------------------------
 // frontend/src/context/AuthContext.jsx
 //
-// Holds the logged-in user's identity client-side. The JWT itself lives in
-// localStorage (read by axiosInstance's request interceptor); this context
-// just decodes it into a plain object (`sub`/`role`/`email`/`exp`) for
-// components to read via useAuth(). initialUser() rehydrates that decoded
-// user from localStorage on first render so a page refresh doesn't log
-// the user out. decodeToken() treats an already-expired token as logged
-// out. login() returns the resolved user so callers (LoginPage,
-// RegisterPage) can redirect immediately instead of waiting on a re-render.
+// Session state. The JWT from /auth/login is kept in localStorage and decoded
+// client-side for display/routing only (sub = user id, role, email, exp) —
+// the backend re-checks every request. The session ends automatically when
+// the token expires. homePathFor() gives each role its landing page.
 // -----------------------------------------------------------------------------
 
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+
+import { TOKEN_KEY } from '@/lib/api'
 
 const AuthContext = createContext(null)
 
@@ -19,51 +17,64 @@ function decodeToken(token) {
   try {
     const payload = token.split('.')[1]
     const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
-
-    if (decoded.exp && decoded.exp * 1000 < Date.now()) {
-      return null
-    }
-
+    if (decoded.exp && decoded.exp * 1000 <= Date.now()) return null
     return decoded
   } catch {
     return null
   }
 }
 
-function initialUser() {
-  const token = localStorage.getItem('access_token')
-  return token ? decodeToken(token) : null
+function readStoredUser() {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY)
+    return token ? decodeToken(token) : null
+  } catch {
+    return null
+  }
+}
+
+export function homePathFor(user) {
+  if (!user) return '/login'
+  return user.role === 'admin' ? '/admin' : '/partner'
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(initialUser)
+  const [user, setUser] = useState(readStoredUser)
 
-  const value = useMemo(
-    () => ({
-      user,
-      login(token, userData) {
-        localStorage.setItem('access_token', token)
-        const resolvedUser = userData ?? decodeToken(token)
-        setUser(resolvedUser)
-        return resolvedUser
-      },
-      logout() {
-        localStorage.removeItem('access_token')
-        setUser(null)
-      },
-    }),
-    [user],
-  )
+  const logout = useCallback(() => {
+    try {
+      localStorage.removeItem(TOKEN_KEY)
+    } catch {
+      /* storage unavailable */
+    }
+    setUser(null)
+  }, [])
 
+  const login = useCallback((token) => {
+    localStorage.setItem(TOKEN_KEY, token)
+    const decoded = decodeToken(token)
+    setUser(decoded)
+    return decoded
+  }, [])
+
+  // End the session exactly when the token expires.
+  useEffect(() => {
+    if (!user?.exp) return undefined
+    const ms = user.exp * 1000 - Date.now()
+    if (ms <= 0) {
+      logout()
+      return undefined
+    }
+    const timer = setTimeout(logout, Math.min(ms, 2 ** 31 - 1))
+    return () => clearTimeout(timer)
+  }, [user, logout])
+
+  const value = useMemo(() => ({ user, login, logout }), [user, login, logout])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
-
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-
+  if (!context) throw new Error('useAuth must be used within an AuthProvider')
   return context
 }

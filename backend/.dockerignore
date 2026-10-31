@@ -22,3 +22,7 @@ env/
 *.db
 *.sqlite3
 .pytest_cache/
+
+# Trained model artifacts are stored in the model_data volume, not the image.
+models/
+*.joblib

@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+    Index,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -72,6 +73,7 @@ class PartnerTier(Base):
 class Partner(Base):
     __tablename__ = "partners"
     __table_args__ = (
+        Index("ix_partners_real_status", "status", postgresql_where=text("is_synthetic = false")),
         CheckConstraint(
             "status IN ('active', 'suspended', 'pending')",
             name="ck_partners_status",

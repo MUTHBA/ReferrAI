@@ -1,145 +1,93 @@
 # -----------------------------------------------------------------------------
 # tests/backend/integration/test_graceful_degradation.py
 #
-# TST-002 — Graceful degradation tests.
-#
-# Verifies that AI scoring failures (quality, fraud, churn) never produce an
-# HTTP 500 and never corrupt core business data (conversions, commissions,
-# wallet credits, click records). All AI components are mocked to raise inside
-# their respective score_* functions; the outer try/except in each function
-# catches the error, logs it, and returns cleanly so the background task does
-# not propagate an exception through the ASGI stack.
+# The core platform must keep working when AI is unavailable (CLAUDE.md):
+#   * no trained model  -> conversion/commission/click still succeed and the
+#     AI row is stored with score NULL + status 'model_unavailable'
+#   * model crashes     -> same, with status 'error'
+#   * fraud without a model still runs the deterministic rules
+# These tests run with the default EMPTY model directory.
+# Change: conversions post referral_code instead of partner_id (partner is derived server-side).
 # -----------------------------------------------------------------------------
 
 import uuid
 from decimal import Decimal
 from unittest.mock import patch
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.models.ai_score import AIScore
 from app.models.commission import Commission
-from app.models.referral import ReferralClick, ReferralConversion
+from app.models.referral import ReferralClick
 from app.models.wallet import Wallet
-from app.services import ai_service
+
+API = "/api/v1"
 
 
-async def test_conversion_succeeds_when_ai_fails(
-    client: AsyncClient,
-    seed: dict,
-    seed_click: uuid.UUID,
-    engine,
-) -> None:
-    """A conversion records as 201 even when the quality scorer raises."""
-    payload = {
-        "click_id": str(seed_click),
-        "external_reference": "degrade-test-001",
-        "conversion_value": "100.00",
-    }
-    # Patch the scorer class so that predict() raises inside score_referral_quality.
-    # The function's outer try/except catches this and returns without writing an
-    # ai_scores row — the background task itself never raises.
-    with patch("app.services.ai_service.ReferralQualityScorer") as mock_cls:
-        mock_cls.return_value.predict.side_effect = Exception("AI unavailable")
-        resp = await client.post(
-            "/api/v1/referrals/conversions",
-            json=payload,
-            headers=seed["admin_headers"],
-        )
+async def _convert(client, seed, ref="deg-1"):
+    return await client.post(
+        f"{API}/referrals/conversions",
+        json={"referral_code": seed["referral_code"], "external_reference": ref, "conversion_value": "100.00"},
+        headers=seed["admin_headers"],
+    )
 
+
+async def test_conversion_and_commission_succeed_without_models(client: AsyncClient, seed: dict, session_factory) -> None:
+    resp = await _convert(client, seed)
     assert resp.status_code == 201, resp.text
-    conversion_id = uuid.UUID(resp.json()["id"])
+    conv_id = uuid.UUID(resp.json()["id"])
+    async with session_factory() as s:
+        commission = (await s.execute(select(Commission).where(Commission.conversion_id == conv_id))).scalar_one()
+        assert commission.amount == Decimal("10.00")
+        wallet = (await s.execute(select(Wallet).where(Wallet.partner_id == seed["partner_id"]))).scalar_one()
+        assert wallet.balance == Decimal("10.00")
+        score = (await s.execute(select(AIScore).where(AIScore.entity_id == conv_id))).scalar_one()
+        assert score.score is None
+        assert score.status == "model_unavailable"
 
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as session:
-        conv = await session.get(ReferralConversion, conversion_id)
-        assert conv is not None
-
-        ai_result = await session.execute(
-            select(AIScore)
-            .where(AIScore.entity_id == conversion_id)
-            .where(AIScore.score_type == "quality")
-        )
-        ai_row = ai_result.scalar_one_or_none()
-        # Scorer raised before writing — no score row, never a 500.
-        assert ai_row is None or ai_row.score is None
+    listed = (await client.get(f"{API}/referrals/conversions", headers=seed["partner_headers"])).json()
+    assert listed[0]["quality_score"] is None and listed[0]["quality_status"] == "model_unavailable"
 
 
-async def test_commission_succeeds_when_ai_fails(
-    client: AsyncClient,
-    seed: dict,
-    seed_click: uuid.UUID,
-    engine,
-) -> None:
-    """Commission row and wallet credit are written even when quality scoring raises."""
-    payload = {
-        "click_id": str(seed_click),
-        "external_reference": "degrade-test-002",
-        "conversion_value": "200.00",
-    }
-    with patch("app.services.ai_service.ReferralQualityScorer") as mock_cls:
-        mock_cls.return_value.predict.side_effect = Exception("AI unavailable")
-        resp = await client.post(
-            "/api/v1/referrals/conversions",
-            json=payload,
-            headers=seed["admin_headers"],
-        )
-
-    assert resp.status_code == 201, resp.text
-    conversion_id = uuid.UUID(resp.json()["id"])
-
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as session:
-        commission_result = await session.execute(
-            select(Commission).where(Commission.conversion_id == conversion_id)
-        )
-        commission = commission_result.scalar_one_or_none()
-        assert commission is not None, "commission row must exist even when AI fails"
-        assert commission.amount > Decimal("0.00")
-
-        wallet_result = await session.execute(
-            select(Wallet).where(Wallet.partner_id == seed["partner_id"])
-        )
-        wallet = wallet_result.scalar_one()
-        assert wallet.balance > Decimal("0.00"), "wallet must be credited even when AI fails"
+async def test_conversion_succeeds_when_model_crashes(client: AsyncClient, seed: dict, session_factory, trained_models) -> None:
+    with patch("app.ai.registry.predict_proba", side_effect=RuntimeError("boom")):
+        resp = await _convert(client, seed, "deg-2")
+    assert resp.status_code == 201
+    async with session_factory() as s:
+        score = (await s.execute(select(AIScore).where(AIScore.entity_id == uuid.UUID(resp.json()["id"])))).scalar_one()
+        assert score.score is None and score.status == "error"
 
 
-async def test_click_tracking_succeeds_when_fraud_scoring_fails(
-    client: AsyncClient,
-    seed: dict,
-    engine,
-) -> None:
-    """GET /r/{slug} returns 302 and writes a click row even when fraud scoring raises."""
-    slug = seed["link_slug"]
-    # Patch FraudDetector so predict() raises inside score_fraud.
-    # The outer try/except catches it; the background task does not propagate.
-    with patch("app.services.ai_service.FraudDetector") as mock_cls:
-        mock_cls.return_value.predict.side_effect = Exception("AI unavailable")
-        resp = await client.get(f"/r/{slug}", follow_redirects=False)
-
+async def test_click_tracking_survives_fraud_scoring_failure(client: AsyncClient, seed: dict, session_factory) -> None:
+    with patch("app.services.ai_service.load_fraud_inputs", side_effect=RuntimeError("boom")):
+        resp = await client.get(f"/r/{seed['link_slug']}", follow_redirects=False)
     assert resp.status_code == 302
-    assert resp.headers["location"] == "https://example.com/landing"
-
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as session:
-        click_result = await session.execute(
-            select(ReferralClick).order_by(ReferralClick.clicked_at.desc()).limit(1)
-        )
-        click = click_result.scalar_one_or_none()
-        assert click is not None, "click row must be recorded even when fraud scoring fails"
+    async with session_factory() as s:
+        assert (await s.execute(select(ReferralClick))).scalar_one() is not None
 
 
-async def test_churn_scoring_failure_does_not_propagate(
-    seed: dict,
-    engine,
-) -> None:
-    """score_churn swallows predictor failures and returns without raising."""
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as session:
-        with patch("app.services.ai_service.ChurnPredictor") as mock_cls:
-            mock_cls.return_value.predict.side_effect = Exception("AI unavailable")
-            # Must complete without raising — graceful degradation is the contract.
-            await ai_service.score_churn(session, seed["partner_id"])
+async def test_fraud_rules_still_score_without_model(client: AsyncClient, seed: dict, session_factory) -> None:
+    resp = await client.get(f"/r/{seed['link_slug']}", follow_redirects=False)
+    assert resp.status_code == 302
+    async with session_factory() as s:
+        row = (
+            await s.execute(select(AIScore).where(AIScore.score_type == "fraud_risk", AIScore.entity_type == "partner"))
+        ).scalar_one()
+        assert row.status == "ok" and row.model_version == "rules-only"
+        assert row.score == Decimal("0.00")
+
+
+async def test_churn_batch_without_model_stores_null(client: AsyncClient, seed: dict, session_factory) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.partner import Partner
+
+    async with session_factory() as s:
+        (await s.get(Partner, seed["partner_id"])).created_at = datetime.now(timezone.utc) - timedelta(days=200)
+        await s.commit()
+    resp = await client.post(f"{API}/admin/run-churn-scoring", headers=seed["admin_headers"])
+    assert resp.status_code == 200 and resp.json()["partners_scored"] == 1
+    async with session_factory() as s:
+        row = (await s.execute(select(AIScore).where(AIScore.score_type == "churn_risk"))).scalar_one()
+        assert row.score is None and row.status == "model_unavailable"

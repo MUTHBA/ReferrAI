@@ -8,6 +8,8 @@
 # conversions capped at 10 000.
 # -----------------------------------------------------------------------------
 
+from typing import Literal, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -33,3 +35,31 @@ class ChurnScoringResponse(BaseModel):
 
 class RankingScoringResponse(BaseModel):
     partners_scored: int
+
+
+class TrainModelsRequest(BaseModel):
+    models: list[Literal["quality", "fraud", "churn"]] = ["quality", "fraud", "churn"]
+    n_partners: int = Field(default=300, ge=50, le=2000, description="Synthetic partners to simulate")
+    seed: int = 7
+
+
+class ModelInfo(BaseModel):
+    name: str
+    trained: bool
+    version: Optional[str] = None
+    trained_at: Optional[str] = None
+    algorithm: Optional[str] = None
+    features: Optional[list[str]] = None
+    feature_labels: Optional[list[str]] = None  # plain-language names, same order as features
+    metrics: Optional[dict] = None
+    training_rows: Optional[int] = None
+
+
+class TrainingStatusResponse(BaseModel):
+    state: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    models: list[str] = []
+    error: Optional[str] = None
+    results: dict = {}
+    available_models: list[ModelInfo] = []

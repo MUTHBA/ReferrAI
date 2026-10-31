@@ -35,8 +35,12 @@ class AIScore(Base):
             name="ck_ai_scores_score_type",
         ),
         CheckConstraint(
-            "score >= 0 AND score <= 100",
+            "score IS NULL OR (score >= 0 AND score <= 100)",
             name="ck_ai_scores_score_range",
+        ),
+        CheckConstraint(
+            "status IN ('ok', 'model_unavailable', 'insufficient_data', 'error')",
+            name="ck_ai_scores_status",
         ),
         Index("ix_ai_scores_entity", "entity_type", "entity_id"),
     )
@@ -47,7 +51,12 @@ class AIScore(Base):
     entity_type: Mapped[str] = mapped_column(String(20), nullable=False)
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     score_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    # NULL when the model was unavailable or failed — never a fake value.
+    score: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    # ok | model_unavailable | insufficient_data | error
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ok", server_default=text("'ok'")
+    )
     contributing_factors: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     model_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
