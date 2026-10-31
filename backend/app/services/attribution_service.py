@@ -1,11 +1,15 @@
 # -----------------------------------------------------------------------------
 # backend/app/services/attribution_service.py
 #
-# Resolves which ReferralClick to credit for a conversion. The attribution
-# model (first_click or last_click) and the window length (days) are read
-# from the settings table at call time so they can be changed without a
-# redeploy. Isolating this here keeps ReferralConversionService focused on
-# persistence and free of attribution branching logic.
+# Resolves which click is credited for a conversion (REF-005).
+#   * If the caller supplies click_id, that click is credited only if it is the
+#     partner's, real, unused and inside the attribution window.
+#   * Otherwise the configured model decides among the partner's eligible
+#     clicks in the window: first_click = oldest, last_click = newest.
+#     For code-based conversions, clicks recorded against that code are
+#     preferred; if there are none, the partner's link clicks are used.
+# Returns the click (or None) together with the model that was applied, so
+# the conversion row stores exactly what was used.
 # -----------------------------------------------------------------------------
 
 import uuid
@@ -20,8 +24,6 @@ from app.services.setting_service import SettingService
 
 
 class AttributionService:
-    """Resolves the click that should be credited for a given conversion event."""
-
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self._click_repo = ReferralClickRepository(session)
@@ -32,40 +34,20 @@ class AttributionService:
         partner_id: uuid.UUID,
         referral_code_id: Optional[uuid.UUID] = None,
         click_id: Optional[uuid.UUID] = None,
-    ) -> Optional[ReferralClick]:
-        """Return the click that should be credited for this conversion, or None.
-
-        Priority: if a specific click_id is supplied it is verified and returned
-        (or None if it fails validation). Otherwise clicks are resolved from the
-        referral_code within the attribution window using the configured model.
-        """
-        attribution_model: str = await self._settings.get(
-            "referral.attribution_model", "last_click"
-        )
-        window_days: int = int(
-            await self._settings.get("referral.attribution_window_days", 30)
-        )
+    ) -> tuple[Optional[ReferralClick], str]:
+        model: str = await self._settings.get("referral.attribution_model")
+        window_days = int(await self._settings.get("referral.attribution_window_days"))
         window_start: datetime = datetime.now(timezone.utc) - timedelta(days=window_days)
 
         if click_id is not None:
-            return await self._click_repo.get_click_in_window(
-                click_id=click_id,
-                partner_id=partner_id,
-                window_start=window_start,
-            )
+            click = await self._click_repo.get_click_in_window(click_id, partner_id, window_start)
+            return click, model
 
+        click = None
         if referral_code_id is not None:
-            if attribution_model == "first_click":
-                return await self._click_repo.get_first_click_in_window(
-                    partner_id=partner_id,
-                    referral_code_id=referral_code_id,
-                    window_start=window_start,
-                )
-            # Default to last_click for any unrecognised value as well
-            return await self._click_repo.get_last_click_in_window(
-                partner_id=partner_id,
-                referral_code_id=referral_code_id,
-                window_start=window_start,
+            click = await self._click_repo.find_attributable_click(
+                partner_id, window_start, model, referral_code_id=referral_code_id
             )
-
-        return None
+        if click is None:
+            click = await self._click_repo.find_attributable_click(partner_id, window_start, model)
+        return click, model

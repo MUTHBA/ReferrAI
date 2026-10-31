@@ -13,17 +13,17 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConversionCreate(BaseModel):
     """Payload for recording a new referral conversion."""
 
     partner_id: uuid.UUID
-    external_reference: str
+    external_reference: str = Field(min_length=1, max_length=255)
     referral_code: Optional[str] = None
     click_id: Optional[uuid.UUID] = None
-    conversion_value: Decimal
+    conversion_value: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
 
 
 class ConversionResponse(BaseModel):
@@ -53,8 +53,19 @@ class ConversionWithScoreResponse(BaseModel):
     """
 
     id: uuid.UUID
+    external_reference: Optional[str] = None
     conversion_value: Decimal
     attribution_model: str
     converted_at: datetime
     quality_score: Optional[float] = None
+    # ok | model_unavailable | insufficient_data | error, or None while scoring is still pending.
+    quality_status: Optional[str] = None
     quality_explanation: Optional[str] = None
+    quality_factors: Optional[list[dict]] = None  # top_factors: label, effect, direction
+    commission_amount: Optional[Decimal] = None
+    commission_type: Optional[str] = None
+    commission_status: Optional[str] = None
+    source: Optional[str] = None
+    device_type: Optional[str] = None
+    clicked_at: Optional[datetime] = None
+    via_code: bool = False

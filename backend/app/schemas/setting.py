@@ -24,3 +24,16 @@ class SettingResponse(BaseModel):
 
 class SettingUpdateRequest(BaseModel):
     value: Any
+
+
+class SettingSchemaResponse(BaseModel):
+    key: str
+    kind: str
+    default: Any
+    description: str
+    minimum: Optional[float] = None
+    maximum: Optional[float] = None
+    exclusive_minimum: bool = False
+    choices: list[str] = []
+    object_keys: list[str] = []
+    unit: Optional[str] = None

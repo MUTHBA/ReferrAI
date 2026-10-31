@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.ai.scoring.fraud_rules import FraudRuleEngine
@@ -82,6 +83,9 @@ async def _make_click(
     device_info: dict | None = None,
     clicked_at: datetime | None = None,
 ) -> uuid.UUID:
+    # Flush pending rows (e.g. the ReferralLink) first: without relationship()
+    # mappings the unit of work may otherwise insert the click before its link.
+    await session.flush()
     click_id = uuid.uuid4()
     session.add(ReferralClick(
         id=click_id,
@@ -117,17 +121,13 @@ async def _make_conversion(
 
 
 async def _seed_thresholds(session, *, max_cph: int = 2, max_spread: int = 2) -> None:
-    """Insert low thresholds so tests need fewer rows to trigger a rule."""
-    session.add(Setting(
-        id=uuid.uuid4(),
-        key="fraud.max_clicks_per_hour",
-        value=max_cph,
-    ))
-    session.add(Setting(
-        id=uuid.uuid4(),
-        key="fraud.max_device_partner_spread",
-        value=max_spread,
-    ))
+    """Lower the (pre-seeded) thresholds so tests need fewer rows to trigger a rule."""
+    await session.execute(
+        update(Setting).where(Setting.key == "fraud.max_clicks_per_hour").values(value=max_cph)
+    )
+    await session.execute(
+        update(Setting).where(Setting.key == "fraud.max_device_partner_spread").values(value=max_spread)
+    )
     await session.flush()
 
 

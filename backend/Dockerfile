@@ -1,37 +1,53 @@
 # -----------------------------------------------------------------------------
 # backend/Dockerfile
 #
-# Multi-layer image for the FastAPI backend on Python 3.13-slim. requirements.txt
-# and requirements-ml.txt are installed before source code so the pip layer is
-# cache-hit on code-only changes. requirements-ml.txt (scikit-learn, joblib,
-# sentence-transformers, shap) is required by the AI scoring pipeline — it was
-# previously excluded but must now be included since AI features are live.
-# alembic upgrade head runs at container start (before uvicorn) so the DB schema
-# is always current before the API accepts requests.
-# For production: replace CMD with `uvicorn app.main:app --host 0.0.0.0 --port
-# 8000 --workers 4` and add a separate migration step to CI/CD.
+# FastAPI backend on Python 3.13-slim, including the AI/ML stack.
+#  * Dependencies are installed before the source so code-only changes reuse
+#    the cached pip layer. The optional embedding stack uses CPU-only torch
+#    (a few hundred MB instead of several GB with CUDA).
+#  * The sentence-transformers model used by partner discovery is downloaded
+#    at build time into HF_HOME, and HF_HUB_OFFLINE=1 stops runtime downloads.
+#  * Trained model files live in AI_MODEL_DIR (/models), a Docker volume, so
+#    they survive rebuilds. On start the container runs migrations, trains the
+#    models if none exist yet (~20s), then starts uvicorn.
+# Production (docker-compose.prod.yml) overrides the command: 4 workers, no reload.
 # -----------------------------------------------------------------------------
 
 FROM python:3.13-slim
 
 WORKDIR /app
 
-# System deps: curl (health-check), libpq (psycopg2 runtime)
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/opt/hf-cache \
+    AI_MODEL_DIR=/models
+
+# curl: health check. libgomp1: OpenMP runtime used by scikit-learn/torch.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libpq5 \
+    && apt-get install -y --no-install-recommends curl libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages first (cached unless requirements files change).
-# requirements-ml.txt contains heavy AI/ML dependencies (scikit-learn, joblib,
-# sentence-transformers, shap) required by the AI scoring pipeline.
-COPY requirements.txt requirements-ml.txt ./
+COPY requirements.txt requirements-ml.txt requirements-embeddings.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-ml.txt
 
-# Copy source — overridden by bind-mount in development
+# Optional semantic embeddings for partner discovery (CPU-only torch). Set
+# --build-arg INSTALL_EMBEDDINGS=false to skip; if the download fails the
+# build continues and discovery falls back to TF-IDF similarity.
+ARG INSTALL_EMBEDDINGS=true
+RUN if [ "$INSTALL_EMBEDDINGS" = "true" ]; then \
+      ( pip install --no-cache-dir torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu \
+        && pip install --no-cache-dir -r requirements-embeddings.txt \
+        && python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')" ) \
+      || echo "WARNING: embeddings not installed - partner discovery will use TF-IDF"; \
+    fi
+# Never download models at runtime (the model above is baked into HF_HOME).
+ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+
 COPY . .
+RUN mkdir -p /models
 
 EXPOSE 8000
 
-# Run DB migrations then start with hot-reload.
-# In production replace with: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+# --proxy-headers/--forwarded-allow-ips: request.client.host is the real
+# visitor IP behind nginx (click tracking and fraud rules depend on it).
+CMD ["sh", "-c", "alembic upgrade head && python -m app.ai.train --if-missing && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips='*'"]

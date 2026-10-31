@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ReferrAI — Sign in</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Hanken Grotesk Font (Matching system typography) -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 with Forms & Container Queries -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration verbatim from Design System -->
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-container-low": "#ecf4ff",
+            "secondary-container": "#6a89fd",
+            "outline-variant": "#bec9c3",
+            "on-surface-variant": "#3f4944",
+            "on-primary-fixed-variant": "#00513e",
+            "error-container": "#ffdad6",
+            "dark-surface": "#18232D",
+            "amber": "#B7791F",
+            "primary-container": "#0f6e56",
+            "surface-variant": "#d6e4f3",
+            "on-error-container": "#93000a",
+            "primary": "#005440",
+            "surface-container-high": "#dceaf9",
+            "line": "#DDE2DC",
+            "surface-bright": "#f7f9ff",
+            "background": "#f7f9ff",
+            "outline": "#6f7a74",
+            "on-tertiary-container": "#d4def0",
+            "secondary": "#3255c7",
+            "dark-canvas": "#111A22",
+            "error": "#ba1a1a",
+            "dark-ink": "#E6ECEF",
+            "on-surface": "#101d28",
+            "primary-fixed-dim": "#84d6b9",
+            "secondary-fixed": "#dce1ff",
+            "rose": "#B83A2E",
+            "tertiary": "#404a59",
+            "dark-line": "#2A3742",
+            "on-error": "#ffffff",
+            "surface-tint": "#086b53",
+            "on-primary-fixed": "#002117",
+            "on-primary": "#ffffff",
+            "on-secondary-container": "#002072",
+            "canvas": "#F2F4F1",
+            "inverse-surface": "#25323d",
+            "tertiary-container": "#586271",
+            "surface-container-lowest": "#ffffff",
+            "tertiary-fixed": "#d9e3f5",
+            "on-tertiary": "#ffffff",
+            "on-secondary-fixed-variant": "#0e3bae",
+            "on-secondary": "#ffffff",
+            "on-primary-container": "#9aedcf",
+            "surface": "#FFFFFF",
+            "on-background": "#101d28",
+            "on-tertiary-fixed": "#121c29",
+            "on-tertiary-fixed-variant": "#3d4756",
+            "surface-dim": "#cedbeb",
+            "surface-container-highest": "#d6e4f3",
+            "tertiary-fixed-dim": "#bdc7d9",
+            "inverse-on-surface": "#e7f2ff",
+            "surface-container": "#e2efff",
+            "secondary-fixed-dim": "#b7c4ff",
+            "primary-fixed": "#a0f3d4",
+            "inverse-primary": "#84d6b9",
+            "on-secondary-fixed": "#001551"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "gutter-mobile": "1rem",
+            "space-md": "1rem",
+            "space-xl": "2rem",
+            "margin": "2rem",
+            "gutter": "1.5rem",
+            "margin-mobile": "1rem",
+            "space-lg": "1.5rem",
+            "space-xs": "0.5rem",
+            "space-2xs": "0.25rem",
+            "space-sm": "0.75rem",
+            "space-2xl": "3rem"
+          },
+          "fontFamily": {
+            "headline-md": ["Hanken Grotesk"],
+            "headline-lg": ["Hanken Grotesk"],
+            "body-tabular": ["Hanken Grotesk"],
+            "headline-lg-mobile": ["Hanken Grotesk"],
+            "caption-tabular": ["Hanken Grotesk"],
+            "caption": ["Hanken Grotesk"],
+            "body-default-bold": ["Hanken Grotesk"],
+            "label-sm": ["Hanken Grotesk"],
+            "body-default": ["Hanken Grotesk"],
+            "display-figure": ["Hanken Grotesk"]
+          },
+          "fontSize": {
+            "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+            "headline-lg": ["28px", { "lineHeight": "36px", "fontWeight": "600" }],
+            "body-tabular": ["15px", { "lineHeight": "22px", "fontWeight": "500" }],
+            "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+            "caption-tabular": ["13px", { "lineHeight": "18px", "fontWeight": "500" }],
+            "caption": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+            "body-default-bold": ["15px", { "lineHeight": "22px", "fontWeight": "600" }],
+            "label-sm": ["12px", { "lineHeight": "16px", "fontWeight": "500" }],
+            "body-default": ["15px", { "lineHeight": "22px", "fontWeight": "400" }],
+            "display-figure": ["32px", { "lineHeight": "38px", "fontWeight": "600" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    /* Strictly disable all drop shadows per system specification */
+    * {
+      box-shadow: none !important;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body class="h-full bg-canvas text-on-surface antialiased selection:bg-primary selection:text-surface overflow-x-hidden">
+<!-- Desktop 1440px Split-screen layout (Suppressed generic global shell per destination/transaction rule) -->
+<main class="w-full min-h-screen flex flex-col md:flex-row">
+<!-- Left 45% Container: Solid Ink with Ledger Panel -->
+<section class="w-full md:w-[45%] bg-dark-surface min-h-[440px] md:min-h-screen p-8 md:p-12 flex flex-col justify-between border-b md:border-b-0 md:border-r border-dark-line relative">
+<!-- Top Branding: ReferrAI wordmark -->
+<div class="flex items-center gap-2">
+<a class="font-headline-md text-headline-md text-dark-ink flex items-center tracking-tight select-none" href="#">
+          Referr<span class="text-primary-fixed">AI</span>
+</a>
+<div class="h-3 w-px bg-dark-line mx-2"></div>
+<span class="font-label-sm text-label-sm text-outline-variant">Partner ledger</span>
+</div>
+<!-- Ledger Composition Panel (Centred) -->
+<div class="my-auto py-12 md:py-0 w-full max-w-md mx-auto">
+<div class="text-left mb-6">
+<div class="flex items-center gap-2 text-outline-variant font-label-sm text-label-sm">
+<span class="inline-block w-2 h-2 rounded-full bg-primary-fixed animate-pulse"></span>
+            Live settlement engine
+          </div>
+<h2 class="mt-2 text-dark-ink font-headline-lg text-headline-lg tracking-tight">
+            Verified attribution ledger
+          </h2>
+</div>
+<!-- Ledger Container with 1px hairline rules -->
+<div class="bg-dark-canvas border border-dark-line rounded-[8px] overflow-hidden">
+<!-- Ledger Header Row -->
+<div class="flex justify-between items-center px-4 py-2.5 bg-dark-surface/60 border-b border-dark-line text-outline-variant font-caption text-caption">
+<span>Transaction</span>
+<span class="tabular-nums">Amount &amp; net</span>
+</div>
+<!-- Row 1 -->
+<div class="flex items-center justify-between px-4 py-3 border-b border-dark-line hover:bg-dark-surface/40 transition-colors duration-150 text-dark-ink">
+<div class="flex flex-col">
+<span class="font-body-default-bold text-body-default text-dark-ink">Peak Fitness Coaching</span>
+<span class="font-caption-tabular text-caption text-outline-variant tabular-nums">conversion $240.00</span>
+</div>
+<div class="text-right">
+<span class="font-body-tabular text-body-default text-primary-fixed tabular-nums font-semibold">+$24.00</span>
+<div class="font-label-sm text-label-sm text-primary-fixed-dim">Commission</div>
+</div>
+</div>
+<!-- Row 2 -->
+<div class="flex items-center justify-between px-4 py-3 border-b border-dark-line hover:bg-dark-surface/40 transition-colors duration-150 text-dark-ink">
+<div class="flex flex-col">
+<span class="font-body-default-bold text-body-default text-dark-ink">UrbanThreads</span>
+<span class="font-caption-tabular text-caption text-outline-variant tabular-nums">conversion $89.50</span>
+</div>
+<div class="text-right">
+<span class="font-body-tabular text-body-default text-primary-fixed tabular-nums font-semibold">+$8.95</span>
+<div class="font-label-sm text-label-sm text-primary-fixed-dim">Commission</div>
+</div>
+</div>
+<!-- Row 3 -->
+<div class="flex items-center justify-between px-4 py-3 hover:bg-dark-surface/40 transition-colors duration-150 text-dark-ink">
+<div class="flex flex-col">
+<span class="font-body-default-bold text-body-default text-dark-ink">Northwind Travel</span>
+<span class="font-caption-tabular text-caption text-outline-variant tabular-nums">batch settlement</span>
+</div>
+<div class="text-right">
+<span class="font-body-tabular text-body-default text-rose tabular-nums font-semibold">−$150.00</span>
+<div class="font-label-sm text-label-sm text-outline-variant">Payout</div>
+</div>
+</div>
+</div>
+<!-- Ledger Footer Statement -->
+<p class="mt-4 font-caption text-caption text-outline-variant leading-relaxed">
+          Track every referral from click to payout.
+        </p>
+</div>
+<!-- Left Bottom Compliance Proof -->
+<div class="pt-6 border-t border-dark-line/60 flex items-center justify-between text-outline-variant font-caption text-caption">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-outline-variant">verified_user</span>
+<span>Ledger proof SHA-256</span>
+</div>
+<span class="font-caption-tabular text-caption tabular-nums">ISO/IEC 27001</span>
+</div>
+</section>
+<!-- Right 55% Container: Cool Sage Grey Canvas with Form Panel -->
+<section class="w-full md:w-[55%] bg-canvas flex items-center justify-center p-6 md:p-12">
+<!-- Form Panel: 400px wide, 1px solid #DDE2DC line border, 10px radius, 32px padding, zero drop shadow -->
+<div class="w-full max-w-[400px] bg-surface border border-line rounded-[10px] p-8">
+<!-- Header -->
+<div class="mb-6">
+<h1 class="font-headline-lg text-headline-lg text-dark-surface tracking-tight">
+            Sign in
+          </h1>
+<p class="mt-1 font-caption text-caption text-on-surface-variant">
+            Enter your credentials to access the operator console.
+          </p>
+</div>
+<!-- Inline Error Banner -->
+<div class="mb-6 p-3 bg-error-container/30 border border-rose rounded-[6px] flex items-start gap-2.5" role="alert">
+<span class="material-symbols-outlined text-rose text-[18px] leading-5 shrink-0 select-none">error</span>
+<div class="font-caption text-caption text-rose leading-tight pt-0.5">
+            Email or password is incorrect.
+          </div>
+</div>
+<!-- Authentication Form -->
+<form action="#" class="space-y-4" method="POST" onsubmit="event.preventDefault();">
+<!-- Email Field -->
+<div>
+<label class="block font-caption text-caption text-on-surface mb-1.5" for="email">
+              Email
+            </label>
+<input class="w-full h-9 px-3 bg-surface border border-line rounded-[6px] text-on-surface font-body-default text-body-default placeholder:text-outline focus:outline-none focus:border-dark-surface focus:ring-0 transition-colors duration-150" id="email" name="email" placeholder="alex.morgan@partner.co" required="" type="email" value="alex.morgan@partner.co"/>
+</div>
+<!-- Password Field -->
+<div>
+<div class="flex items-center justify-between mb-1.5">
+<label class="block font-caption text-caption text-on-surface" for="password">
+                Password
+              </label>
+</div>
+<div class="relative">
+<input class="w-full h-9 pl-3 pr-16 bg-surface border border-line rounded-[6px] text-on-surface font-body-default text-body-default focus:outline-none focus:border-dark-surface focus:ring-0 transition-colors duration-150" id="password" name="password" required="" type="password" value="••••••••••••"/>
+<button class="absolute right-2.5 top-1/2 -translate-y-1/2 font-caption text-caption text-on-surface-variant hover:text-dark-surface px-1.5 py-0.5 rounded transition-colors duration-150 cursor-pointer select-none" id="togglePassword" onclick="const pwd = document.getElementById('password'); const btn = this; if (pwd.type === 'password') { pwd.type = 'text'; btn.innerText = 'Hide'; } else { pwd.type = 'password'; btn.innerText = 'Show'; }" type="button">
+                Show
+              </button>
+</div>
+<!-- Forgot password link (right-aligned under field) -->
+<div class="mt-1.5 text-right">
+<a class="font-caption text-caption text-primary hover:underline transition-colors duration-150" href="#">
+                Forgot password?
+              </a>
+</div>
+</div>
+<!-- Submit Button: Full width, jade solid, 6px radius, py-2.5, font-medium, zero drop shadow -->
+<div class="pt-2">
+<button class="w-full h-9 py-2 px-3.5 bg-primary-container hover:bg-primary text-on-primary font-body-default-bold text-body-default rounded-[6px] flex items-center justify-center transition-colors duration-150 cursor-pointer text-center" type="submit">
+              Sign in
+            </button>
+</div>
+<!-- Registration Anchor -->
+<div class="pt-4 text-center">
+<p class="font-caption text-caption text-on-surface-variant">
+              New partner? <a class="text-primary hover:underline font-body-default-bold transition-colors duration-150" href="#">Create an account</a>
+</p>
+</div>
+</form>
+<!-- Subtle security metadata indicator inside panel -->
+<div class="mt-8 pt-4 border-t border-line flex items-center justify-between text-outline font-label-sm text-label-sm">
+<span>Environment: US-East-1</span>
+<span class="flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
+            System 100% operational
+          </span>
+</div>
+</div>
+</section>
+</main>
+<!-- Grounded Utilitarian Ledger Sub-Footer -->
+<footer class="w-full bg-canvas border-t border-line py-3 px-6 md:px-8 text-on-surface-variant font-caption text-caption">
+<div class="max-w-[1280px] mx-auto flex flex-col md:flex-row items-center justify-between gap-2">
+<div>
+        © 2025 ReferrAI Inc. All ledger records cryptographically verified.
+      </div>
+<div class="flex items-center gap-6">
+<a class="hover:text-primary transition-colors duration-150" href="#">Security &amp; Compliance</a>
+<a class="hover:text-primary transition-colors duration-150" href="#">Ledger Verification</a>
+<a class="hover:text-primary transition-colors duration-150" href="#">Privacy Policy</a>
+</div>
+</div>
+</footer>
+</body></html>

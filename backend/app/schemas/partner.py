@@ -18,7 +18,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TierResponse(BaseModel):
@@ -34,13 +34,27 @@ class TierResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _check_rate(commission_type: Optional[str], value: Optional[Decimal]) -> None:
+    """Percentage / tier_based rates are fractions: 0 < value <= 1 (0.10 = 10%)."""
+    if commission_type in ("percentage", "tier_based") and value is not None:
+        if not (Decimal("0") < value <= Decimal("1")):
+            raise ValueError(
+                "commission_value for percentage tiers must be a fraction between 0 and 1 (e.g. 0.10 for 10%)"
+            )
+
+
 class TierCreateRequest(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=100)
     rank_order: int = Field(ge=1)
     min_referral_count: int = Field(ge=0, default=0)
     min_revenue_contribution: Decimal = Field(ge=0, default=Decimal("0"))
     commission_type: Literal["percentage", "fixed", "tier_based"]
-    commission_value: Decimal = Field(ge=0)
+    commission_value: Decimal = Field(ge=0, max_digits=10, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _validate_rate(self) -> "TierCreateRequest":
+        _check_rate(self.commission_type, self.commission_value)
+        return self
 
 
 class TierUpdateRequest(BaseModel):
@@ -49,7 +63,13 @@ class TierUpdateRequest(BaseModel):
     min_referral_count: Optional[int] = Field(None, ge=0)
     min_revenue_contribution: Optional[Decimal] = Field(None, ge=0)
     commission_type: Optional[Literal["percentage", "fixed", "tier_based"]] = None
-    commission_value: Optional[Decimal] = Field(None, ge=0)
+    commission_value: Optional[Decimal] = Field(None, ge=0, max_digits=10, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _validate_rate(self) -> "TierUpdateRequest":
+        # When only the value changes, the service re-checks against the stored type.
+        _check_rate(self.commission_type, self.commission_value)
+        return self
 
 
 class PartnerResponse(BaseModel):
@@ -69,6 +89,11 @@ class PartnerResponse(BaseModel):
     rank_score: Optional[float] = None
     # Latest churn_risk score (0–100) from ai_scores; null until scoring runs.
     churn_score: Optional[float] = None
+    # Latest partner-level fraud_risk score (0–100); admin lists only.
+    fraud_score: Optional[float] = None
+    # Average of the latest quality score across the partner's conversions.
+    quality_score: Optional[float] = None
+    tier_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

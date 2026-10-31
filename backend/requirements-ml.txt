@@ -1,27 +1,18 @@
 # -----------------------------------------------------------------------------
 # backend/requirements-ml.txt
 #
-# Heavy AI/ML dependencies split from requirements.txt to keep the base Docker
-# image lean. These are now included in the Dockerfile RUN pip install step
-# because the AI scoring pipeline (fraud, churn, quality, ranking) imports
-# scikit-learn, joblib, and numpy at module level.
+# AI/ML dependencies, installed into the backend image alongside
+# requirements.txt. Versions are pinned so trained model files (joblib) load
+# in the same library versions they were trained with — the versions used are
+# also recorded in each model's .meta.json.
 #
-# Version notes:
-#   scikit-learn 1.4.x — broken on Python 3.13 (build dep numpy==2.0.0rc1 was
-#   yanked from PyPI). 1.6.1 is the current stable release with Python 3.13
-#   wheels; numpy is pulled as a transitive dep.
-#   shap and sentence-transformers are lazy imports (imported inside functions),
-#   so they degrade gracefully if unavailable, but are included here so the
-#   full AI feature set works in Docker.
+# The optional embedding stack (torch CPU + sentence-transformers) is in
+# requirements-embeddings.txt; without it partner discovery uses TF-IDF.
 # -----------------------------------------------------------------------------
 
-# Core ML — imported at module level by scoring modules; must be installed
+numpy==2.2.6
+scipy==1.15.3
+pandas==2.2.3
 scikit-learn==1.6.1
 joblib==1.4.2
-
-# shap and sentence-transformers are intentionally excluded from Docker:
-#   - shap requires g++ to build its C extension (absent in python:3.13-slim)
-#   - sentence-transformers pulls in PyTorch (~500 MB), making the image impractical
-# Both are lazy imports wrapped in broad except-clauses, so the app degrades
-# gracefully (explain_tree returns {}, discovery embeddings return null).
-# To enable locally: pip install shap==0.46.0 sentence-transformers==3.3.1
+shap==0.48.0

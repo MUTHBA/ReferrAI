@@ -36,10 +36,11 @@ async def admin_dashboard(
 
 @router.get("/dashboard/partner", response_model=PartnerDashboardResponse)
 async def partner_dashboard(
+    days: int = Query(default=30, ge=1, le=90),
     current_user: User = Depends(require_partner),
     db: AsyncSession = Depends(get_db),
 ) -> PartnerDashboardResponse:
-    return await DashboardService(db).get_partner_dashboard(current_user.id)
+    return await DashboardService(db).get_partner_dashboard(current_user.id, days=days)
 
 
 def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:

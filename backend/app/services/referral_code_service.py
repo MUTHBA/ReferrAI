@@ -14,9 +14,8 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.referral import ReferralCode
-from app.repositories.partner_repository import PartnerRepository
+from app.models.partner import Partner
 from app.repositories.referral_code_repository import ReferralCodeRepository
-from app.services.referral_link_service import PartnerProfileNotFoundError
 
 _CODE_ALPHABET = string.ascii_uppercase + string.digits
 _CODE_LENGTH = 8
@@ -27,12 +26,8 @@ class ReferralCodeService:
         self.session = session
         self.repo = ReferralCodeRepository(session)
 
-    async def list_for_partner(self, user_id: uuid.UUID) -> list[ReferralCode]:
-        """Return all codes owned by the partner associated with this user."""
-        partner = await PartnerRepository(self.session).get_by_user_id(user_id)
-        if partner is None:
-            return []
-        return await self.repo.list_by_partner(partner.id)
+    async def list_for_partner(self, partner_id: uuid.UUID) -> list[ReferralCode]:
+        return await self.repo.list_by_partner(partner_id)
 
     async def _unique_code(self) -> str:
         for _ in range(10):
@@ -41,10 +36,7 @@ class ReferralCodeService:
                 return code
         raise RuntimeError("Could not generate a unique referral code after 10 attempts")
 
-    async def create(self, user_id: uuid.UUID) -> ReferralCode:
-        partner = await PartnerRepository(self.session).get_by_user_id(user_id)
-        if partner is None:
-            raise PartnerProfileNotFoundError(user_id)
+    async def create(self, partner: Partner) -> ReferralCode:
 
         code_str = await self._unique_code()
         code = ReferralCode(

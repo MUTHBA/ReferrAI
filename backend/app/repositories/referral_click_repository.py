@@ -1,21 +1,20 @@
 # -----------------------------------------------------------------------------
 # backend/app/repositories/referral_click_repository.py
 #
-# Data access for the referral_clicks table. create() is append-only; the
-# three window-query methods (get_click_in_window, get_first_click_in_window,
-# get_last_click_in_window) are used exclusively by AttributionService to
-# resolve which click to credit for a conversion. No attribution logic lives
-# here — only parameterised queries ordered by clicked_at.
+# Data access for the referral_clicks table. create() is append-only;
+# get_click_in_window() and find_attributable_click() are used by
+# AttributionService to resolve which click to credit for a conversion. Both
+# ignore synthetic clicks and clicks already credited to another conversion.
 # -----------------------------------------------------------------------------
 
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.referral import ReferralClick
+from app.models.referral import ReferralClick, ReferralConversion
 
 
 class ReferralClickRepository:
@@ -28,56 +27,50 @@ class ReferralClickRepository:
         await self.session.flush()
         return click
 
+    @staticmethod
+    def _unused():
+        """Clicks that have not already been credited to a conversion."""
+        return ~exists().where(ReferralConversion.click_id == ReferralClick.id)
+
     async def get_click_in_window(
         self,
         click_id: uuid.UUID,
         partner_id: uuid.UUID,
         window_start: datetime,
     ) -> Optional[ReferralClick]:
-        """Return a specific click only if it belongs to the partner and is within the attribution window."""
+        """Return a specific click only if it belongs to the partner, is real
+        (non-synthetic), unused, and inside the attribution window."""
         result = await self.session.execute(
             select(ReferralClick).where(
                 ReferralClick.id == click_id,
                 ReferralClick.partner_id == partner_id,
                 ReferralClick.clicked_at >= window_start,
+                ReferralClick.is_synthetic == False,  # noqa: E712
+                self._unused(),
             )
         )
         return result.scalar_one_or_none()
 
-    async def get_first_click_in_window(
+    async def find_attributable_click(
         self,
         partner_id: uuid.UUID,
-        referral_code_id: uuid.UUID,
         window_start: datetime,
+        model: str,
+        referral_code_id: Optional[uuid.UUID] = None,
     ) -> Optional[ReferralClick]:
-        """Return the oldest click for this code within the attribution window (first-click model)."""
-        result = await self.session.execute(
-            select(ReferralClick)
-            .where(
-                ReferralClick.partner_id == partner_id,
-                ReferralClick.referral_code_id == referral_code_id,
-                ReferralClick.clicked_at >= window_start,
-            )
-            .order_by(ReferralClick.clicked_at.asc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
+        """Pick the click to credit under first_click (oldest) or last_click (newest).
 
-    async def get_last_click_in_window(
-        self,
-        partner_id: uuid.UUID,
-        referral_code_id: uuid.UUID,
-        window_start: datetime,
-    ) -> Optional[ReferralClick]:
-        """Return the most recent click for this code within the attribution window (last-click model)."""
-        result = await self.session.execute(
-            select(ReferralClick)
-            .where(
-                ReferralClick.partner_id == partner_id,
-                ReferralClick.referral_code_id == referral_code_id,
-                ReferralClick.clicked_at >= window_start,
-            )
-            .order_by(ReferralClick.clicked_at.desc())
-            .limit(1)
+        Considers only the partner's real, unused clicks inside the window. When
+        referral_code_id is given, only clicks recorded against that code count.
+        """
+        stmt = select(ReferralClick).where(
+            ReferralClick.partner_id == partner_id,
+            ReferralClick.clicked_at >= window_start,
+            ReferralClick.is_synthetic == False,  # noqa: E712
+            self._unused(),
         )
+        if referral_code_id is not None:
+            stmt = stmt.where(ReferralClick.referral_code_id == referral_code_id)
+        order = ReferralClick.clicked_at.asc() if model == "first_click" else ReferralClick.clicked_at.desc()
+        result = await self.session.execute(stmt.order_by(order, ReferralClick.id).limit(1))
         return result.scalar_one_or_none()

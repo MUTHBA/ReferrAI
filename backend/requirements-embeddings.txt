@@ -1,0 +1,11 @@
+# -----------------------------------------------------------------------------
+# backend/requirements-embeddings.txt
+#
+# OPTIONAL: semantic embeddings for partner discovery. Install torch from the
+# CPU-only index first (much smaller than the default CUDA build):
+#   pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-embeddings.txt
+# Without these packages discovery automatically uses TF-IDF similarity.
+# -----------------------------------------------------------------------------
+
+sentence-transformers==3.4.1

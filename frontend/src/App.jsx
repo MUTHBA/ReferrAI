@@ -1,23 +1,35 @@
 // -----------------------------------------------------------------------------
 // frontend/src/App.jsx
 //
-// Root component mounted by main.jsx. Composes the three app-wide
-// providers/routers in order: AuthProvider (so useAuth() works anywhere
-// below it) wrapping BrowserRouter wrapping AppRouter (the actual route
-// table). Keep this file as pure composition — route definitions belong in
-// routes/AppRouter.jsx, not here.
+// Root providers: theme, data fetching (TanStack Query), session, router and
+// the toast host.
 // -----------------------------------------------------------------------------
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext.jsx'
-import AppRouter from './routes/AppRouter.jsx'
+
+import { Toaster } from '@/components/ui/sonner'
+import { AuthProvider } from '@/context/AuthContext'
+import { ThemeProvider } from '@/providers/theme-provider'
+import AppRouter from '@/routes/AppRouter'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false },
+  },
+})
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRouter />
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppRouter />
+          </BrowserRouter>
+          <Toaster />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   )
 }

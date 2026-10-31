@@ -108,7 +108,7 @@ async def test_score_candidates_records_have_expected_fields(
 async def test_score_candidates_returns_score_factors_dict(
     client: AsyncClient, seed: dict
 ) -> None:
-    """score_factors contains the three sub-score keys regardless of model availability."""
+    """score_factors always contains the sub-score keys, even with nothing to compare against."""
     headers = await _admin_headers(client)
     resp = await client.post(
         "/api/v1/admin/discovery/candidates",
@@ -119,8 +119,8 @@ async def test_score_candidates_returns_score_factors_dict(
     factors = resp.json()[0]["score_factors"]
     assert factors is not None
     assert "similarity" in factors
-    assert "category_match" in factors
-    assert "geographic" in factors
+    assert "category_fit" in factors
+    assert "reference_partners" in factors
 
 
 async def test_score_candidates_sorted_by_score_descending(

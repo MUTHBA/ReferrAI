@@ -83,8 +83,8 @@ class FraudRuleEngine:
             )
 
             svc = SettingService(self.db)
-            max_cph = int(await svc.get("fraud.max_clicks_per_hour", 20))
-            max_spread = int(await svc.get("fraud.max_device_partner_spread", 3))
+            max_cph = int(await svc.get("fraud.max_clicks_per_hour"))
+            max_spread = int(await svc.get("fraud.max_device_partner_spread"))
 
             triggered: list[str] = []
 
@@ -119,6 +119,7 @@ class FraudRuleEngine:
                 .select_from(ReferralClick)
                 .where(ReferralClick.ip_address == ip)
                 .where(ReferralClick.clicked_at >= cutoff_1h)
+                .where(ReferralClick.is_synthetic == False)  # noqa: E712
             )
             return int(count or 0) > max_cph
         except Exception:
@@ -140,6 +141,7 @@ class FraudRuleEngine:
                 .select_from(ReferralClick)
                 .where(fp_expr == fingerprint)
                 .where(ReferralClick.clicked_at >= cutoff_24h)
+                .where(ReferralClick.is_synthetic == False)  # noqa: E712
             )
             return int(count or 0) > max_spread
         except Exception:

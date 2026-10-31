@@ -16,7 +16,7 @@ import qrcode
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.referral import ReferralLink
-from app.repositories.partner_repository import PartnerRepository
+from app.models.partner import Partner
 from app.repositories.referral_link_repository import ReferralLinkRepository
 
 
@@ -45,19 +45,10 @@ class ReferralLinkService:
                 return slug
         raise RuntimeError("Could not generate a unique referral slug after 10 attempts")
 
-    async def list_for_partner(self, user_id: uuid.UUID) -> list[ReferralLink]:
-        """Return all links owned by the partner associated with this user."""
-        partner = await PartnerRepository(self.session).get_by_user_id(user_id)
-        if partner is None:
-            return []
-        return await self.repo.list_by_partner(partner.id)
+    async def list_for_partner(self, partner_id: uuid.UUID) -> list[ReferralLink]:
+        return await self.repo.list_by_partner(partner_id)
 
-    async def create(
-        self, user_id: uuid.UUID, destination_url: str, base_url: str
-    ) -> ReferralLink:
-        partner = await PartnerRepository(self.session).get_by_user_id(user_id)
-        if partner is None:
-            raise PartnerProfileNotFoundError(user_id)
+    async def create(self, partner: Partner, destination_url: str, base_url: str) -> ReferralLink:
 
         slug = await self._unique_slug()
         referral_url = f"{base_url}r/{slug}"

@@ -16,11 +16,11 @@
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import client_ip, require_admin
 from app.models.user import User
 from app.schemas.fraud import FraudFlagResponse, FraudFlagReviewRequest
 from app.services.fraud_service import (
@@ -47,6 +47,7 @@ async def list_fraud_flags(
 async def review_fraud_flag(
     flag_id: uuid.UUID,
     payload: FraudFlagReviewRequest,
+    request: Request,
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> FraudFlagResponse:
@@ -55,6 +56,8 @@ async def review_fraud_flag(
             flag_id=flag_id,
             action=payload.status,
             reviewer_id=current_user.id,
+            notes=payload.notes,
+            ip_address=client_ip(request),
         )
     except FraudFlagNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fraud flag not found")

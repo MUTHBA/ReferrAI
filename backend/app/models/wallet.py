@@ -123,7 +123,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint(
-            "reference_type IN ('commission', 'withdrawal')",
+            "reference_type IN ('commission', 'withdrawal', 'withdrawal_reversal', 'commission_reversal')",
             name="ck_transactions_reference_type",
         ),
     )

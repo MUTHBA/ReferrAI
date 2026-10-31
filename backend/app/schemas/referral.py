@@ -11,11 +11,19 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ReferralLinkCreateRequest(BaseModel):
-    destination_url: str
+    destination_url: str = Field(min_length=8, max_length=2048)
+
+    @field_validator("destination_url")
+    @classmethod
+    def _http_only(cls, value: str) -> str:
+        # The /r/{slug} redirect must never point at javascript:, data:, etc.
+        if not value.lower().startswith(("http://", "https://")):
+            raise ValueError("destination_url must start with http:// or https://")
+        return value
 
 
 class ReferralLinkResponse(BaseModel):
@@ -27,6 +35,8 @@ class ReferralLinkResponse(BaseModel):
     qr_code_data: Optional[str]
     is_active: bool
     created_at: datetime
+    click_count: int = 0
+    conversion_count: int = 0
 
 
 class ReferralCodeResponse(BaseModel):
@@ -37,3 +47,5 @@ class ReferralCodeResponse(BaseModel):
     code: str
     is_active: bool
     created_at: datetime
+    click_count: int = 0
+    conversion_count: int = 0

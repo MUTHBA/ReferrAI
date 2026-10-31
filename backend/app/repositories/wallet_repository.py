@@ -26,8 +26,14 @@ class WalletRepository:
         await self.session.flush()
         return wallet
 
-    async def get_by_partner_id(self, partner_id: uuid.UUID) -> Optional[Wallet]:
-        result = await self.session.execute(
-            select(Wallet).where(Wallet.partner_id == partner_id)
-        )
+    async def get_by_partner_id(
+        self, partner_id: uuid.UUID, for_update: bool = False
+    ) -> Optional[Wallet]:
+        """Fetch a partner's wallet. Pass for_update=True before mutating the
+        balance: it takes a row lock (SELECT ... FOR UPDATE) so concurrent
+        credits/debits serialise instead of overwriting each other."""
+        stmt = select(Wallet).where(Wallet.partner_id == partner_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self.session.execute(stmt)
         return result.scalar_one_or_none()

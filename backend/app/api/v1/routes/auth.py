@@ -1,7 +1,8 @@
 # -----------------------------------------------------------------------------
 # backend/app/api/v1/routes/auth.py
 #
-# Auth endpoints: register, login, me, forgot-password, reset-password.
+# Auth endpoints: register, login, me, change-password, forgot-password,
+# reset-password.
 # Mounted at /api/v1/auth via app.include_router() in main.py. Each handler
 # translates a service-layer exception into the appropriate HTTP status
 # (409 duplicate email, 401 bad credentials, 400 bad reset token) — business
@@ -15,6 +16,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
+    ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
@@ -81,3 +83,16 @@ async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depen
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
 
     return MessageResponse(message="Password reset successful")
+
+
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    try:
+        await AuthService(db).change_password(current_user, payload.current_password, payload.new_password)
+    except InvalidCredentialsError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Your current password is incorrect")
+    return MessageResponse(message="Password changed")

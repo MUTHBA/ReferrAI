@@ -188,8 +188,8 @@ async def test_confirm_flag_updates_status_and_writes_audit_log(
         )
         log = result.scalar_one_or_none()
     assert log is not None, "audit_logs row for fraud_flag.confirmed was not written"
-    assert log.old_value == "pending_review"
-    assert log.new_value == "confirmed"
+    assert log.old_value == {"status": "pending_review"}
+    assert log.new_value["status"] == "confirmed"
 
 
 async def test_dismiss_flag_updates_status(

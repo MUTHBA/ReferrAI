@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+    Index,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -97,6 +98,10 @@ class ReferralCode(Base):
 class ReferralClick(Base):
     __tablename__ = "referral_clicks"
     __table_args__ = (
+        Index(
+            "ix_referral_clicks_real_partner_time", "partner_id", "clicked_at",
+            postgresql_where=text("is_synthetic = false"),
+        ),
         CheckConstraint(
             "referral_link_id IS NOT NULL OR referral_code_id IS NOT NULL",
             name="ck_referral_clicks_link_or_code",
@@ -139,6 +144,10 @@ class ReferralClick(Base):
 class ReferralConversion(Base):
     __tablename__ = "referral_conversions"
     __table_args__ = (
+        Index(
+            "ix_referral_conversions_real_partner_time", "partner_id", "converted_at",
+            postgresql_where=text("is_synthetic = false"),
+        ),
         CheckConstraint(
             "attribution_model IN ('first_click', 'last_click')",
             name="ck_referral_conversions_attribution_model",
